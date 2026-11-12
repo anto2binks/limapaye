@@ -1464,23 +1464,13 @@ function checkWeeks(d, v) {
   if (calN) W.detail.forEach((x) => { x.label = x.label.replace(/S(\d+)/g, (_, n) => { const k = calN.weeks[+n - 1]; return k ? dm(k.inFrom) + "→" + dm(k.inTo) : "S" + n; }); });
   out.push({ s: "info", t: "Ce que tu as noté", d: W.detail.map((x) => x.label + " : " + fh(x.tot) + "" + (tag(x) ? " → " + tag(x) : "")).join(" · ") + "." });
   {
-    const normal = W.normal, gap = r2(W.baseM - normal);
-    if (W.prorata) out.push({ s: "info", t: "Heures travaillées " + fh(W.worked) + " ≠ heures payées " + fh(W.expectedPaid), d:
-      "<b>Tes " + fh(W.worked) + " travaillées se décomposent ainsi, semaine par semaine :</b><br>" +
-      "• heures jusqu'à " + fh(W.C) + " dans chaque semaine (ce ne sont pas des heures sup) : <b>" + fh(normal) + "</b><br>" +
-      "• heures au-delà de " + fh(W.C) + " dans chaque semaine (heures sup) : <b>" + fh(W.hs) + "</b><br>" +
-      "<b>Ce que la paie doit contenir :</b> le salaire de base proratisé, " + fh(W.baseM) + " (151,67 h − les jours avant ton arrivée), qui couvre toutes les heures du premier groupe, plus les " + fh(W.hs) + " d'heures sup majorées = <b>" + fh(W.expectedPaid) + "</b>.<br>" +
-      "Les " + fh(normal) + " et les " + fh(W.baseM) + " ne mesurent pas la même chose : les premières sont tes heures réelles sous " + fh(W.C) + " par semaine, les secondes sont le salaire mensualisé converti en heures. Les heures sup se comptent semaine par semaine, jamais par différence entre le total du mois et la base." +
-      (normal > W.baseM + 0.1 ? " La méthode de ton employeur (151,67 h − les heures des jours avant ton arrivée) est la plus courante. D'autres méthodes de proratisation (jours ouvrés, heures réellement travaillées) peuvent donner un peu plus, et ta convention collective peut en imposer une : demande laquelle est appliquée." : "") });
-    else out.push({ s: "info", t: "Heures travaillées " + fh(W.worked) + " ≠ heures à payer " + fh(W.expectedPaid) + " : c'est normal", d:
-      "<b>Heures travaillées</b> = la somme de tes semaines : " + fh(W.worked) + ".<br>" +
-      "<b>Heures à payer</b> = ta base mensualisée " + fh(W.baseM) + (W.hc ? " + " + fh(W.hc) + " complémentaires" : "") + " + tes " + fh(W.hs) + " sup = <b>" + fh(W.expectedPaid) + "</b>.<br>" +
-      "La base mensualisée paie toujours le même nombre d'heures chaque mois (" + fh(W.baseFull) + " = " + String(W.C).replace(".", ",") + " h × 52 semaines ÷ 12), quel que soit le nombre de jours du mois" + (W.prorata ? ", sauf le mois d'embauche où elle est réduite (voir ci-dessous)" : "") + ". " +
-      "Ce mois-ci, tes heures jusqu'à " + fh(W.C) + " par semaine (hors heures sup) font " + fh(normal) + (Math.abs(gap) < 0.02 ? ", exactement la base." : gap > 0
-        ? " : la base t'en paie " + fh(gap) + " de plus. C'est le lissage de la mensualisation, il s'équilibre sur l'année (les mois plus longs, tu en fais plus que la base)."
-        : " : tu as fait " + fh(-gap) + " de plus que la base sans qu'elles soient des heures sup (semaines sous " + String(W.C).replace(".", ",") + " h, ou mois long). C'est le lissage de la mensualisation.") +
-      " C'est le chiffre <b>à payer</b> qu'on compare avec ta fiche." });
+    const hsTxt = W.hs ? fh(W.hs) + " d'heures sup (" + fh(W.h25) + " à 25 % et " + fh(W.h50) + " à 50 %)" : "aucune heure sup";
+    out.push({ s: "info", t: "Ce qui doit être payé : " + fh(W.expectedPaid), d:
+      "<b>1. Le salaire de base : " + fh(W.baseM) + "</b>" + (W.prorata ? " (151,67 h − " + fh(W.prorata.lostH) + " pour " + W.prorata.days.join(", ") + ", jours avant ton embauche)" : " (35 h × 52 semaines ÷ 12)") + ". Il paie toutes tes heures jusqu'à " + fh(W.C) + " par semaine, quel que soit leur nombre exact dans le mois." + (W.prorata ? " Les heures faites le jour de l'embauche et les semaines incomplètes sont dedans." : "") + "<br>" +
+      "<b>2. Les heures sup : " + (W.hs ? fh(W.hs) : "0,00 h") + "</b>, comptées semaine par semaine au-delà de " + fh(W.C) + " : " + hsTxt + ".<br>" +
+      "<b>Total à payer : " + fh(W.baseM) + " + " + fh(W.hs + W.hc) + " = " + fh(W.expectedPaid) + "</b>. C'est ce chiffre qu'on compare avec la fiche. Tes " + fh(W.worked) + " travaillées ne se comparent pas directement au total de la fiche : seules les heures sup s'ajoutent au salaire de base." });
   }
+
   if (W.hc) {
     const pc10 = v.hc10 || 0, pc25 = v.hc25 || 0, missC = r2(W.hc - pc10 - pc25);
     if (missC > 0.1) out.push({ s: "bad", t: "Il manque " + fh(missC) + " complémentaires sur la fiche", d: "Selon tes heures : " + fh(W.c10) + " à 10 % et " + fh(W.c25) + " à 25 %. La fiche paie " + fh(pc10) + " à 10 % et " + fh(pc25) + " à 25 %." });
