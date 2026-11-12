@@ -447,7 +447,8 @@ const pct = (n, d = 2) => (n == null || isNaN(n)) ? "—" : n.toLocaleString("fr
 const r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 /* Heures : centièmes ↔ heures-minutes (200,17 h = 200h10) */
 function hhmm(h) { const neg = h < 0; h = Math.abs(h); let H = Math.floor(h), M = Math.round((h - H) * 60); if (M === 60) { H++; M = 0; } return (neg ? "-" : "") + H + "h" + String(M).padStart(2, "0"); }
-function fh(h) { if (h == null || isNaN(h)) return "—"; return h.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " h (" + hhmm(h) + ")"; }
+function fh(h) { if (h == null || isNaN(h)) return "—"; return h.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " h"; }
+function fhBoth(h) { if (h == null || isNaN(h)) return "—"; return fh(h) + " (" + hhmm(h) + ")"; }
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
 
@@ -1039,7 +1040,7 @@ function checkCalculs(v, P) {
     if (!hasRed) {
       out.push({ s: "bad", t: "Heures sup : réduction de cotisations salariales absente", d: "Ta fiche indique " + fh(hsTot) + " majorées, mais aucune ligne « réduction de cotisations salariales heures supplémentaires » n'apparaît. Cette réduction (≈ 11,31 % de la rémunération des heures sup, estimée ici à ≈ " + eur(hsPay) + ") <b>n'a pas de plafond annuel</b> : elle reste due même après les 7 500 € d'exonération d'impôt. Manque estimé : ≈ <b>" + eur(gainNet) + " de net ce mois-ci</b>. Compare avec tes fiches précédentes : si la ligne y figurait, son absence ce mois-ci est une erreur de déclaration." });
     } else out.push({ s: "ok", t: "Heures sup : réduction de cotisations présente", d: "Une ligne de réduction de cotisations sur les heures supplémentaires apparaît sur la fiche." });
-    if (/\d{1,3}\s*h\s*\d{2}\s*(min)?/i.test(STATE.text) && !(STATE.meta.hsItems || []).length) out.push({ s: "info", t: "Heures en heures/minutes", d: "Sur la fiche, les heures peuvent être écrites en heures et minutes (200h10) ou en centièmes (200,17 h) : la loi n'impose pas de format. Le piège est le calcul : 10 min = 0,17 h et non 0,10 h, 15 min = 0,25 h. Ici l'outil convertit : " + fh(v.heures || 0) + " dont " + fh(h25) + " à 25 % et " + fh(h50) + " à 50 %. Comme la fiche ne donne ni le taux horaire ni le montant de chaque type d'heures, tu ne peux pas vérifier que la conversion a été bien faite : demande le détail." });
+    if (/\d{1,3}\s*h\s*\d{2}\s*(min)?/i.test(STATE.text) && !(STATE.meta.hsItems || []).length) out.push({ s: "info", t: "Heures converties en centièmes", d: "Ta fiche écrit les heures en heures et minutes ; l'appli les convertit en centièmes pour calculer : 10 min = 0,17 h, 15 min = 0,25 h, 30 min = 0,50 h, 45 min = 0,75 h. Ici : " + fh(v.heures || 0) + " payées, dont " + fh(h25) + " à 25 % et " + fh(h50) + " à 50 %. La fiche ne donne ni le taux horaire ni le montant de chaque type d'heures : demande le détail pour vérifier que la conversion a été bien faite." });
   }
 
   if (has("netImpo") && has("tauxPas") && has("pas")) {
@@ -1457,7 +1458,7 @@ function checkWeeks(d, v) {
   const fr = (h) => (h ?? 0).toLocaleString("fr-FR", { maximumFractionDigits: 2 });
   const W = computeWeeks(d);
   const out = [];
-  weeksOf(d).forEach((x, i) => { const el = $("wc-" + i); if (el) { const h = parseHours(x); el.textContent = h != null ? "= " + fh(h) : ""; } });
+  weeksOf(d).forEach((x, i) => { const el = $("wc-" + i); if (el) { const h = parseHours(x); el.textContent = h != null ? "= " + fhBoth(h) : ""; } });
   $("weeks-sum").textContent = W ? "Heures travaillées : " + fh(W.worked) + " · Heures à payer : " + fh(W.expectedPaid) + " (base " + (W.prorata ? "proratisée " : "") + fh(W.baseM) + (W.hc ? " + " + fh(W.hc) + " compl." : "") + " + " + fh(W.hs) + " sup : " + fh(W.h25) + " à 25 %, " + fh(W.h50) + " à 50 %)" : "";
   if (!W) { out.push({ s: "info", t: "Note tes heures de chaque semaine", d: "Par exemple 50, 42, 38, 47 (ou « 47h30 »). L'outil calcule les heures sup que tu aurais dû être payé et les compare avec la fiche." }); return out; }
   const tag = (x) => [x.c1 && fh(x.c1) + " compl. à 10 %", x.c2 && fh(x.c2) + " compl. à 25 %", x.a && fh(x.a) + " sup à 25 %", x.b && fh(x.b) + " sup à 50 %"].filter(Boolean).join(" + ");
@@ -1466,14 +1467,14 @@ function checkWeeks(d, v) {
   out.push({ s: "info", t: "Ce que tu as noté", d: W.detail.map((x) => x.label + " : " + fh(x.tot) + "" + (tag(x) ? " → " + tag(x) : "")).join(" · ") + "." });
   {
     const normal = W.normal, gap = r2(W.baseM - normal);
-    if (W.prorata) out.push({ s: "info", t: "Heures travaillées " + hhmm(W.worked) + " ≠ heures payées " + hhmm(W.expectedPaid), d:
+    if (W.prorata) out.push({ s: "info", t: "Heures travaillées " + fh(W.worked) + " ≠ heures payées " + fh(W.expectedPaid), d:
       "<b>Tes " + fh(W.worked) + " travaillées se décomposent ainsi, semaine par semaine :</b><br>" +
       "• heures jusqu'à " + fh(W.C) + " dans chaque semaine (ce ne sont pas des heures sup) : <b>" + fh(normal) + "</b><br>" +
       "• heures au-delà de " + fh(W.C) + " dans chaque semaine (heures sup) : <b>" + fh(W.hs) + "</b><br>" +
       "<b>Ce que la paie doit contenir :</b> le salaire de base proratisé, " + fh(W.baseM) + " (151,67 h − les jours avant ton arrivée), qui couvre toutes les heures du premier groupe, plus les " + fh(W.hs) + " d'heures sup majorées = <b>" + fh(W.expectedPaid) + "</b>.<br>" +
       "Les " + fh(normal) + " et les " + fh(W.baseM) + " ne mesurent pas la même chose : les premières sont tes heures réelles sous " + fh(W.C) + " par semaine, les secondes sont le salaire mensualisé converti en heures. Les heures sup se comptent semaine par semaine, jamais par différence entre le total du mois et la base." +
       (normal > W.baseM + 0.1 ? " La méthode de ton employeur (151,67 h − les heures des jours avant ton arrivée) est la plus courante. D'autres méthodes de proratisation (jours ouvrés, heures réellement travaillées) peuvent donner un peu plus, et ta convention collective peut en imposer une : demande laquelle est appliquée." : "") });
-    else out.push({ s: "info", t: "Heures travaillées " + hhmm(W.worked) + " ≠ heures à payer " + hhmm(W.expectedPaid) + " : c'est normal", d:
+    else out.push({ s: "info", t: "Heures travaillées " + fh(W.worked) + " ≠ heures à payer " + fh(W.expectedPaid) + " : c'est normal", d:
       "<b>Heures travaillées</b> = la somme de tes semaines : " + fh(W.worked) + ".<br>" +
       "<b>Heures à payer</b> = ta base mensualisée " + fh(W.baseM) + (W.hc ? " + " + fh(W.hc) + " complémentaires" : "") + " + tes " + fh(W.hs) + " sup = <b>" + fh(W.expectedPaid) + "</b>.<br>" +
       "La base mensualisée paie toujours le même nombre d'heures chaque mois (" + fh(W.baseFull) + " = " + String(W.C).replace(".", ",") + " h × 52 semaines ÷ 12), quel que soit le nombre de jours du mois" + (W.prorata ? ", sauf le mois d'embauche où elle est réduite (voir ci-dessous)" : "") + ". " +
@@ -1535,7 +1536,7 @@ function checkWeeks(d, v) {
   }
   if (!calW) {
     const w = weeksOf(d), idx = w.map((x, i) => ({ h: parseHours(x), i })).filter((x) => x.h != null);
-    const edge = idx.filter((x, k) => (k === 0 || k === idx.length - 1) && x.h < W.C * 0.6).map((x) => "S" + (x.i + 1) + " (" + hhmm(x.h) + ")");
+    const edge = idx.filter((x, k) => (k === 0 || k === idx.length - 1) && x.h < W.C * 0.6).map((x) => "S" + (x.i + 1) + " (" + fh(x.h) + ")");
     if (edge.length) out.push({ s: "info", t: "Semaine coupée par le changement de mois : " + edge.join(", "), d: "Une semaine va du lundi au dimanche. Si elle est à cheval sur deux mois, ses heures sup sont en général calculées et payées avec le mois où elle se termine. Ici, ses heures comptent dans la base, et ses heures sup éventuelles apparaîtront sur l'autre fiche. Note la semaine complète dans le mois où elle se termine si c'est ainsi que ton employeur fait." });
   }
   if (calW) W.low = W.low.filter((n) => { const k = calW.weeks[n - 1]; return k && !k.cutStart && !k.cutEnd; });
@@ -1607,7 +1608,7 @@ function renderMulti(P) {
   if (docs.length < 2) return;
   const fr = (h) => h == null ? "—" : h.toLocaleString("fr-FR", { maximumFractionDigits: 2 });
   const M = docs.map((d) => ({ d, m: docMetrics(d, P) }));
-  $("multi-rows").innerHTML = M.map(({ d, m }) => `<tr><td>${esc(d.label)}</td><td class="n">${eur(d.values.brut)}</td><td class="n">${d.values.heures != null ? fh(d.values.heures) : "—"}</td><td class="n">${m.hsTot ? fh(m.hsTot) : "—"}</td><td class="n">${(() => { const W = computeWeeks(d); return W ? fh(W.hs) + (Math.abs(W.hs - m.hsTot) > 0.1 ? (W.hs > m.hsTot ? ' <span class="pill bad">−' + hhmm(r2(W.hs - m.hsTot)) + '</span>' : "") : "") : "—"; })()}</td><td>${m.hsTot ? (m.red ? '<span class="pill ok">oui</span>' : '<span class="pill bad">non</span>') : "—"}</td><td class="n">${m.exo == null ? "—" : eur(m.exo)}</td><td class="n">${eur(d.values.nonSoumis)}</td><td class="n">${eur(d.values.netSocial)}</td><td class="n">${eur(d.values.netPaye)}</td></tr>`).join("");
+  $("multi-rows").innerHTML = M.map(({ d, m }) => `<tr><td>${esc(d.label)}</td><td class="n">${eur(d.values.brut)}</td><td class="n">${d.values.heures != null ? fh(d.values.heures) : "—"}</td><td class="n">${m.hsTot ? fh(m.hsTot) : "—"}</td><td class="n">${(() => { const W = computeWeeks(d); return W ? fh(W.hs) + (Math.abs(W.hs - m.hsTot) > 0.1 ? (W.hs > m.hsTot ? ' <span class="pill bad">−' + fh(r2(W.hs - m.hsTot)) + '</span>' : "") : "") : "—"; })()}</td><td>${m.hsTot ? (m.red ? '<span class="pill ok">oui</span>' : '<span class="pill bad">non</span>') : "—"}</td><td class="n">${m.exo == null ? "—" : eur(m.exo)}</td><td class="n">${eur(d.values.nonSoumis)}</td><td class="n">${eur(d.values.netSocial)}</td><td class="n">${eur(d.values.netPaye)}</td></tr>`).join("");
   const out = [];
   const withHS = M.filter((x) => x.m.hsTot > 0);
   const noRed = withHS.filter((x) => !x.m.red);
@@ -1656,7 +1657,7 @@ function recompute() {
   if (d) { FIELDS.forEach((f) => d.values[f.id] = v[f.id]); d.flags = { cadre: v.cadre, alsace: v.alsace, plafondHS: v.plafondHS }; }
   FIELDS.forEach((f) => {
     $("f-" + f.id).classList.toggle("found", STATE.found[f.id] != null && readField(f) === STATE.found[f.id]);
-    if (f.h) $("cv-" + f.id).textContent = v[f.id] != null ? "= " + fh(v[f.id]) : "";
+    if (f.h) $("cv-" + f.id).textContent = v[f.id] != null ? "= " + fhBoth(v[f.id]) : "";
   });
   renderSummary(v);
   const calc = checkCalculs(v, P), cotis = checkCotisations(STATE.lines, v, P), ment = checkMentions(STATE.text);
@@ -1905,7 +1906,7 @@ const AI_RULES = `Tu es un expert de la paie en France (règles 2026), au servic
 Ta mission : analyser les fiches de paie ci-dessous et dire clairement ce qui est juste, ce qui est faux ou manquant, et ce que le salarié doit faire.
 
 Règles :
-- Écris toujours les heures dans les deux formats : centièmes et heures-minutes, par exemple « 200,17 h (200h10) ». Fais les calculs en centièmes (10 min = 0,17 h, 15 min = 0,25 h, 30 min = 0,50 h).
+- Écris les heures uniquement en centièmes (par exemple « 200,17 h », jamais « 200h10 ») et fais tous les calculs en centièmes (10 min = 0,17 h, 15 min = 0,25 h, 30 min = 0,50 h). Si la fiche les écrit en heures-minutes, convertis-les.
 - Vérifie les calculs toi-même (base × taux = montant, totaux, net avant impôt, net imposable, impôt, net payé, net social).
 - Vérifie les mentions obligatoires (art. R3243-1 du Code du travail, bulletin clarifié), le détail du brut, les heures (h/min ↔ centièmes), les heures supplémentaires (réduction de cotisations salariales sans plafond annuel ; exonération d'impôt plafonnée à 7 500 € par an), les indemnités et paniers (nature et montant obligatoires), les congés payés (dates et indemnité obligatoires s'ils sont pris dans le mois ; compteurs acquis/pris/solde ; acquisition de 2,5 jours ouvrables par mois), le montant net social (les remboursements de frais professionnels n'y entrent pas), les taux et la répartition des cotisations.
 - Tiens compte de la convention collective et de l'emploi indiqués sur la fiche. Si tu cites un montant de barème conventionnel (panier, minimum de salaire…), précise que c'est à confirmer dans le texte en vigueur si tu n'es pas certain du chiffre exact pour 2026. N'invente jamais un chiffre.
