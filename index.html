@@ -1,0 +1,871 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<title>Décodeur Fiche de Paie</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Mise en page : une colonne de lecture, du résumé vers le détail (chiffres → contrôles → mentions → ligne par ligne). */
+:root {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --sunken: #eaedf3;
+  --line: #d5dae4;
+  --fg: #151b2b;
+  --muted: #5a6478;
+  --accent: #2f3fd0;
+  --accent-soft: #e4e7fc;
+  --ok: #157347;
+  --ok-soft: #dcf2e6;
+  --warn: #9a5b00;
+  --warn-soft: #fbedd3;
+  --bad: #b3261e;
+  --bad-soft: #fbe0de;
+  --info: #3f4a63;
+  --info-soft: #e6e9f0;
+  --bar-net: #2f3fd0;
+  --bar-tax: #8a6bd9;
+  --bar-cot: #9aa4b8;
+  --bar-pat: #c9cfdb;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-num: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f121a; --surface: #171b26; --sunken: #1f2432; --line: #2d3446;
+    --fg: #e8eaf0; --muted: #9aa3b8; --accent: #8e98ff; --accent-soft: #252b52;
+    --ok: #5fd197; --ok-soft: #173326; --warn: #f0b75a; --warn-soft: #3a2b12;
+    --bad: #ff8a80; --bad-soft: #3d1c1a; --info: #b4bdd2; --info-soft: #232938;
+    --bar-net: #8e98ff; --bar-tax: #b9a2f5; --bar-cot: #5d6680; --bar-pat: #3a4156;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f121a; --surface: #171b26; --sunken: #1f2432; --line: #2d3446;
+  --fg: #e8eaf0; --muted: #9aa3b8; --accent: #8e98ff; --accent-soft: #252b52;
+  --ok: #5fd197; --ok-soft: #173326; --warn: #f0b75a; --warn-soft: #3a2b12;
+  --bad: #ff8a80; --bad-soft: #3d1c1a; --info: #b4bdd2; --info-soft: #232938;
+  --bar-net: #8e98ff; --bar-tax: #b9a2f5; --bar-cot: #5d6680; --bar-pat: #3a4156;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 64px;
+}
+.wrap { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: clamp(28px, 5vw, 40px); font-weight: 800; line-height: 1.1; }
+h2 { font-size: 21px; font-weight: 700; }
+h3 { font-size: 16px; font-weight: 700; }
+p { margin: 0; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+a { color: var(--accent); }
+.eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+
+header.top { display: flex; flex-direction: column; gap: 10px; }
+header.top p { max-width: 66ch; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.section { display: flex; flex-direction: column; gap: 14px; }
+.section-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+
+/* Dépôt du fichier */
+.drop { border: 2px dashed var(--line); border-radius: 10px; padding: 22px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px; background: var(--surface); transition: border-color .15s, background .15s; }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop .txt { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; }
+button, .btn { font: 600 14px/1 var(--font-body); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+button:hover, .btn:hover { border-color: var(--accent); }
+button.primary, .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+button:focus-visible, .btn:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.status { font-size: 14px; padding: 10px 12px; border-radius: 8px; background: var(--info-soft); color: var(--info); }
+.status.err { background: var(--bad-soft); color: var(--bad); }
+.status.example { background: var(--warn-soft); color: var(--warn); }
+textarea { width: 100%; min-height: 160px; font: 13px/1.5 var(--font-num); padding: 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); resize: vertical; }
+
+/* Résumé */
+.flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.tile { background: var(--sunken); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tile .k { font-size: 12px; color: var(--muted); font-weight: 600; }
+.tile .v { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 600; white-space: nowrap; }
+.tile.hl { background: var(--accent-soft); }
+.tile.hl .v { color: var(--accent); }
+.bar { display: flex; height: 26px; border-radius: 6px; overflow: hidden; background: var(--sunken); }
+.bar span { display: block; height: 100%; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.plain { font-size: 16px; max-width: 70ch; }
+.plain strong { font-family: var(--font-num); font-weight: 600; }
+
+/* Formulaire des chiffres */
+.grid-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px 14px; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field label { font-size: 13px; font-weight: 600; }
+.field .hint { font-size: 12px; color: var(--muted); }
+.field input, .field select { font: 15px var(--font-num); padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); width: 100%; }
+.field input.found { border-color: var(--accent); }
+.field.check { flex-direction: row; align-items: center; gap: 8px; }
+.field.check input { width: auto; }
+
+/* Résultats */
+.counts { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; letter-spacing: 0.02em; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.info { background: var(--info-soft); color: var(--info); }
+ul.checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+ul.checks li { display: grid; grid-template-columns: 4px 1fr; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+ul.checks li:first-child { border-top: 0; }
+ul.checks li .stripe { border-radius: 2px; }
+ul.checks li.ok .stripe { background: var(--ok); }
+ul.checks li.warn .stripe { background: var(--warn); }
+ul.checks li.bad .stripe { background: var(--bad); }
+ul.checks li.info .stripe { background: var(--line); }
+ul.checks .body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+ul.checks .row1 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+ul.checks .title { font-weight: 600; }
+ul.checks .detail { font-size: 14px; color: var(--muted); }
+ul.checks .detail b { color: var(--fg); font-weight: 600; }
+code.src { font: 12px var(--font-num); background: var(--sunken); padding: 2px 6px; border-radius: 4px; overflow-wrap: anywhere; }
+
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 14px; }
+th, td { text-align: left; padding: 10px 12px; border-top: 1px solid var(--line); vertical-align: top; }
+thead th { border-top: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); background: var(--sunken); }
+td.lbl { font-family: var(--font-num); font-size: 12.5px; max-width: 280px; overflow-wrap: anywhere; }
+td.who { white-space: nowrap; }
+td .t { font-weight: 600; display: block; }
+
+details.panel summary { cursor: pointer; font-family: var(--font-display); font-weight: 700; font-size: 16px; }
+pre.raw { font: 12px/1.5 var(--font-num); background: var(--sunken); padding: 12px; border-radius: 8px; overflow-x: auto; margin: 0; white-space: pre; }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tabs button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+ol.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; max-width: 72ch; }
+.copied { font-size: 13px; color: var(--ok); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <span class="eyebrow">Bulletin de salaire · France · règles 2026</span>
+    <h1>Décodeur de fiche de paie</h1>
+    <p class="muted">Dépose ta fiche de paie (PDF, ou photo). L'outil lit chaque ligne, t'explique en français simple ce qu'elle veut dire, refait les calculs et liste les mentions obligatoires qui manquent. Tout se passe dans ton navigateur : le fichier n'est envoyé nulle part.</p>
+  </header>
+
+  <section class="section" aria-labelledby="h-import">
+    <h2 id="h-import" hidden>Importer</h2>
+    <div class="drop" id="drop">
+      <div class="txt">
+        <strong>Glisse ta fiche de paie ici</strong>
+        <span class="muted small">PDF de préférence (celui téléchargé sur le site de l'URSSAF ou de ton employeur). Une photo marche aussi, mais la lecture est moins fiable.</span>
+      </div>
+      <div class="btns">
+        <label class="btn primary" for="file">Choisir un fichier</label>
+        <input type="file" id="file" accept="application/pdf,image/*">
+        <button type="button" id="btn-paste">Coller le texte</button>
+        <button type="button" id="btn-example">Recharger l'exemple</button>
+      </div>
+    </div>
+    <div id="paste-box" class="panel" hidden>
+      <label for="paste-area"><strong>Colle ici le texte de ta fiche de paie</strong> <span class="muted small">(ouvre le PDF, sélectionne tout, copie, colle)</span></label>
+      <textarea id="paste-area" placeholder="Salaire de base   151,67   12,02   1 823,07 …"></textarea>
+      <div class="btns"><button type="button" class="primary" id="btn-analyse-paste">Analyser ce texte</button></div>
+    </div>
+    <div class="status" id="status" role="status"></div>
+  </section>
+
+  <section class="section" aria-labelledby="h-resume">
+    <div class="section-head"><h2 id="h-resume">En résumé</h2><span class="muted small" id="periode-lue"></span></div>
+    <div class="panel">
+      <div class="flow" id="tiles"></div>
+      <div class="bar" id="bar" aria-hidden="true"></div>
+      <div class="legend" id="legend"></div>
+      <p class="plain" id="plain"></p>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="h-chiffres">
+    <div class="section-head">
+      <h2 id="h-chiffres">Les chiffres lus sur ta fiche</h2>
+      <span class="muted small">Encadré en couleur = trouvé automatiquement. Corrige si besoin, tout se recalcule.</span>
+    </div>
+    <div class="panel">
+      <div class="grid-form" id="form"></div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="h-calculs">
+    <div class="section-head"><h2 id="h-calculs">Les calculs sont-ils justes ?</h2><div class="counts" id="count-calc"></div></div>
+    <div class="panel"><ul class="checks" id="checks-calc"></ul></div>
+  </section>
+
+  <section class="section" aria-labelledby="h-cotis">
+    <div class="section-head"><h2 id="h-cotis">Cotisation par cotisation</h2><div class="counts" id="count-cotis"></div></div>
+    <p class="muted small">Pour chaque cotisation principale, on recalcule le montant avec le taux légal 2026 et on cherche ce montant sur la ligne correspondante de ta fiche.</p>
+    <div class="panel"><ul class="checks" id="checks-cotis"></ul></div>
+  </section>
+
+  <section class="section" aria-labelledby="h-mentions">
+    <div class="section-head"><h2 id="h-mentions">Mentions obligatoires</h2><div class="counts" id="count-mentions"></div></div>
+    <p class="muted small">Liste issue de l'article R3243-1 du Code du travail et du modèle de « bulletin clarifié ». Une mention « non trouvée » peut aussi être écrite autrement sur ta fiche : vérifie à l'œil avant de réclamer.</p>
+    <div class="panel"><ul class="checks" id="checks-mentions"></ul></div>
+  </section>
+
+  <section class="section" aria-labelledby="h-lignes">
+    <div class="section-head"><h2 id="h-lignes">Ta fiche, ligne par ligne</h2><span class="muted small" id="lignes-count"></span></div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Ligne lue</th><th>Ce que ça veut dire</th><th>Qui paie</th></tr></thead>
+        <tbody id="lines"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="h-actions">
+    <h2 id="h-actions">Que faire s'il y a un problème ?</h2>
+    <div class="panel">
+      <ol class="steps">
+        <li><strong>Vérifie à l'œil</strong> chaque point rouge ou orange : la lecture automatique peut se tromper (colonnes mélangées, photo floue).</li>
+        <li><strong>Demande par écrit</strong> (mail) à ton employeur ou au service paie une explication ou un bulletin corrigé. Le bouton « Copier le rapport » ci-dessous te donne un texte prêt à coller.</li>
+        <li>Si ta fiche est faite via le <strong>TESE</strong> ou le <strong>CEA</strong> de l'URSSAF, c'est l'URSSAF qui fabrique le bulletin à partir de ce que déclare ton employeur : une erreur vient souvent d'une mauvaise déclaration (heures, taux, statut).</li>
+        <li>Sans réponse : <strong>représentants du personnel (CSE)</strong>, puis <strong>inspection du travail</strong> (DREETS de ton département). Un salaire impayé peut être réclamé pendant 3 ans.</li>
+        <li>Garde toutes tes fiches de paie <strong>sans limite de durée</strong> : elles servent pour ta retraite.</li>
+      </ol>
+      <div class="btns"><button type="button" id="btn-copy">Copier le rapport</button><span class="copied" id="copied" role="status"></span></div>
+      <textarea id="report-fallback" hidden readonly></textarea>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="h-params">
+    <details class="panel">
+      <summary id="h-params">Paramètres légaux utilisés</summary>
+      <p class="muted small">Valeurs au 1er janvier 2026. Si une valeur a changé, modifie-la ici.</p>
+      <div class="grid-form" id="params"></div>
+    </details>
+    <details class="panel">
+      <summary>Texte extrait de la fiche</summary>
+      <p class="muted small">Ce que l'outil a réellement lu. Utile pour comprendre pourquoi une ligne n'a pas été reconnue.</p>
+      <pre class="raw" id="raw"></pre>
+    </details>
+    <p class="muted small">Outil d'aide à la lecture, sans valeur juridique. Les taux de certaines cotisations (accident du travail, mutuelle, prévoyance, versement mobilité…) dépendent de l'entreprise et ne peuvent pas être vérifiés ici.</p>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+"use strict";
+
+/* ------------------------------------------------------------------ */
+/* Paramètres légaux                                                   */
+/* ------------------------------------------------------------------ */
+const PARAMS = [
+  { id: "smic", label: "SMIC horaire brut (€)", value: 12.02 },
+  { id: "pmss", label: "Plafond mensuel Sécu – PMSS (€)", value: 4005 },
+  { id: "abattCSG", label: "Assiette CSG (% du brut)", value: 98.25 },
+];
+
+/* ------------------------------------------------------------------ */
+/* Exemple (fictif)                                                    */
+/* ------------------------------------------------------------------ */
+const EXAMPLE = [
+  "SARL BOULANGERIE EXEMPLE   12 rue des Lilas 69003 Lyon",
+  "SIRET 123 456 789 00012   Code APE 1071C   URSSAF Rhône-Alpes n° 690000000000",
+  "BULLETIN DE SALAIRE   Période du 01/10/2026 au 31/10/2026   Paiement le 31/10/2026",
+  "Salarié : M. Jean EXEMPLE   Emploi : Vendeur   Coefficient 160   Niveau II",
+  "Salaire de base   151,67   13,19   2 000,53",
+  "SALAIRE BRUT   2 000,53",
+  "Santé - Sécurité sociale Maladie Maternité Invalidité Décès   2 000,53   7,00   140,04",
+  "Complémentaire santé   25,00   25,00",
+  "Accidents du travail - Maladies professionnelles   2 000,53   1,20   24,01",
+  "Retraite Sécurité sociale plafonnée   2 000,53   6,90   138,04   8,55   171,05",
+  "Retraite Sécurité sociale déplafonnée   2 000,53   0,40   8,00   2,11   42,21",
+  "Retraite complémentaire Tranche 1   2 000,53   3,15   63,02   4,72   94,43",
+  "CEG Tranche 1   2 000,53   0,86   17,20   1,29   25,81",
+  "Famille   2 000,53   3,45   69,02",
+  "Assurance chômage   2 000,53   4,00   80,02",
+  "AGS   2 000,53   0,25   5,00",
+  "Autres contributions dues par l'employeur   8,00",
+  "CSG déductible de l'impôt sur le revenu   1 965,52   6,80   133,66",
+  "CSG/CRDS non déductible de l'impôt sur le revenu   1 965,52   2,90   57,00",
+  "Allègement de cotisations employeur   -300,00",
+  "TOTAL DES COTISATIONS ET CONTRIBUTIONS   441,92   384,59",
+  "NET A PAYER AVANT IMPOT SUR LE REVENU   1 558,61",
+  "Dont évolution de la rémunération liée à la suppression des cotisations chômage et maladie   34,01",
+  "Net imposable   1 640,61",
+  "Impôt sur le revenu prélevé à la source   1 640,61   3,50 %   57,42",
+  "NET PAYE EN EUROS   1 501,19",
+  "Total versé par l'employeur   2 385,12",
+].join("\n");
+
+/* ------------------------------------------------------------------ */
+/* Outils texte / nombres                                              */
+/* ------------------------------------------------------------------ */
+const norm = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[’`]/g, "'");
+const NUM_RE = /-?\d{1,3}(?:\.\d{3})+,\d+|-?\d{1,3}(?:[   ]\d{3})+(?:[.,]\d+)?|-?\d+(?:[.,]\d+)?/g;
+function toNum(s) {
+  s = s.replace(/[   ]/g, "");
+  if (/\.\d{3},/.test(s)) s = s.replace(/\./g, "");
+  return parseFloat(s.replace(",", "."));
+}
+function numbersIn(line) {
+  const cleaned = line
+    .replace(/\b\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}\b/g, " ")      // dates
+    .replace(/\b\d{3}[  ]?\d{3}[  ]?\d{3}[  ]?\d{5}\b/g, " ") // SIRET
+    .replace(/\b\d{9,}\b/g, " ")                                    // longs identifiants
+    .replace(/\b\d{4}[a-z]\b/gi, " ")                               // code APE
+    .replace(/\b(19|20)\d{2}\b(?![.,]\d)/g, " ")                              // années seules
+    .replace(/\b\d{5}\b(?=\s+[A-Za-zÀ-ÿ])/g, " ");                  // code postal
+  return (cleaned.match(NUM_RE) || []).map(toNum).filter((n) => !isNaN(n));
+}
+const eur = (n) => (n == null || isNaN(n)) ? "—" : n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+const pct = (n, d = 2) => (n == null || isNaN(n)) ? "—" : n.toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d }) + " %";
+const r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const near = (a, b, tol) => Math.abs(a - b) <= tol;
+
+/* ------------------------------------------------------------------ */
+/* Lecture des fichiers                                                */
+/* ------------------------------------------------------------------ */
+const $ = (id) => document.getElementById(id);
+function setStatus(msg, kind) { const s = $("status"); s.textContent = msg; s.className = "status" + (kind ? " " + kind : ""); }
+
+async function readPdf(file) {
+  if (!window.pdfjsLib) throw new Error("Le lecteur PDF n'a pas pu se charger. Vérifie ta connexion, ou utilise « Coller le texte ».");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  const data = new Uint8Array(await file.arrayBuffer());
+  const pdf = await pdfjsLib.getDocument({ data }).promise;
+  const out = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const tc = await page.getTextContent();
+    const items = tc.items.filter((i) => i.str && i.str.trim()).map((i) => ({ s: i.str, x: i.transform[4], y: i.transform[5], w: i.width || 0, h: Math.abs(i.transform[3]) || 8 }));
+    items.sort((a, b) => b.y - a.y || a.x - b.x);
+    const rows = [];
+    for (const it of items) {
+      const tol = Math.max(2, it.h * 0.45);
+      let row = rows.find((r) => Math.abs(r.y - it.y) <= tol);
+      if (!row) { row = { y: it.y, items: [] }; rows.push(row); }
+      row.items.push(it);
+    }
+    rows.sort((a, b) => b.y - a.y);
+    for (const r of rows) {
+      r.items.sort((a, b) => a.x - b.x);
+      let line = "", end = null;
+      for (const it of r.items) {
+        if (end !== null) {
+          const gap = it.x - end;
+          line += gap > it.h * 0.9 ? "   " : (gap > it.h * 0.15 ? " " : "");
+        }
+        line += it.s;
+        end = it.x + it.w;
+      }
+      out.push(line.replace(/\s+$/, ""));
+    }
+    if (p < pdf.numPages) out.push("");
+  }
+  const text = out.join("\n");
+  if (text.replace(/\s/g, "").length < 40) throw new Error("Ce PDF ne contient pas de texte lisible (c'est sûrement un scan). Essaie de l'envoyer en photo, ou recopie les lignes avec « Coller le texte ».");
+  return text;
+}
+
+function loadScript(src) {
+  return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("chargement impossible")); document.head.appendChild(s); });
+}
+async function readImage(file) {
+  setStatus("Lecture de la photo (reconnaissance de texte)… cela peut prendre 30 secondes.");
+  if (!window.Tesseract) await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
+  const res = await Tesseract.recognize(file, "fra");
+  return res.data.text;
+}
+
+async function handleFile(file) {
+  if (!file) return;
+  try {
+    setStatus("Lecture de « " + file.name + " »…");
+    let text;
+    if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) text = await readPdf(file);
+    else if (file.type.startsWith("image/")) {
+      try { text = await readImage(file); }
+      catch (e) { throw new Error("La lecture des photos n'est pas disponible ici. Utilise le PDF, ou recopie les lignes avec « Coller le texte »."); }
+    } else throw new Error("Format non pris en charge. Utilise un PDF ou une image.");
+    analyse(text, "Fiche « " + file.name + " » analysée. Vérifie les chiffres lus ci-dessous.");
+  } catch (e) {
+    setStatus(e.message || String(e), "err");
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Extraction des chiffres clés                                        */
+/* ------------------------------------------------------------------ */
+const FIELDS = [
+  { id: "heures", label: "Heures payées", hint: "151,67 h = 35 h par semaine" },
+  { id: "taux", label: "Taux horaire brut (€)", hint: "Ce que tu gagnes par heure, avant cotisations" },
+  { id: "base", label: "Salaire de base (€)" },
+  { id: "brut", label: "Salaire brut (€)", hint: "Total avant cotisations" },
+  { id: "totalSal", label: "Total cotisations salarié (€)", hint: "Ce qui est retiré de ton brut" },
+  { id: "totalPat", label: "Total cotisations employeur (€)" },
+  { id: "netAvant", label: "Net à payer avant impôt (€)" },
+  { id: "netImpo", label: "Net imposable (€)", hint: "Sert à calculer ton impôt" },
+  { id: "tauxPas", label: "Taux d'impôt à la source (%)" },
+  { id: "pas", label: "Impôt prélevé (€)" },
+  { id: "netPaye", label: "Net payé / versé (€)", hint: "Ce qui arrive sur ton compte" },
+  { id: "netSocial", label: "Montant net social (€)" },
+  { id: "cout", label: "Coût total employeur (€)" },
+];
+
+function findLine(lines, test) {
+  for (const l of lines) { const n = norm(l); if (test(n)) return l; }
+  return null;
+}
+function lastNum(line) { if (!line) return null; const ns = numbersIn(line); return ns.length ? ns[ns.length - 1] : null; }
+
+function extract(text) {
+  const lines = text.split(/\n/).map((l) => l.trim()).filter(Boolean);
+  const f = {};
+  const brutL = findLine(lines, (n) => /(salaire|remuneration|total)\s+brut|^brut\b|brut (total|mensuel|du mois)/.test(n) && !/net|plafon|annuel|cumul/.test(n));
+  f.brut = lastNum(brutL);
+
+  const baseL = findLine(lines, (n) => /salaire de base|salaire mensuel|appointements|salaire forfaitaire|remuneration de base/.test(n));
+  if (baseL) {
+    const ns = numbersIn(baseL);
+    if (ns.length >= 3) {
+      const [a, b, c] = [ns[ns.length - 3], ns[ns.length - 2], ns[ns.length - 1]];
+      if (near(a * b, c, Math.max(0.1, c * 0.01))) { f.heures = a; f.taux = b; f.base = c; }
+      else f.base = c;
+    } else if (ns.length) f.base = ns[ns.length - 1];
+  }
+  if (f.heures == null) {
+    const hL = findLine(lines, (n) => /(heures|horaire) (payees|travaillees|du mois|mensuel)|nombre d'heures|nb heures|total heures/.test(n));
+    const ns = hL ? numbersIn(hL).filter((x) => x > 0 && x < 300) : [];
+    if (ns.length) f.heures = ns[0];
+  }
+  if (f.taux == null) {
+    const tL = findLine(lines, (n) => /taux horaire/.test(n));
+    const ns = tL ? numbersIn(tL).filter((x) => x > 5 && x < 200) : [];
+    if (ns.length) f.taux = ns[0];
+  }
+
+  const totL = findLine(lines, (n) => /total (des )?(cotisations|retenues|charges)/.test(n));
+  if (totL) { const ns = numbersIn(totL).filter((x) => x > 0); if (ns.length >= 2) { f.totalSal = ns[ns.length - 2]; f.totalPat = ns[ns.length - 1]; } else if (ns.length) f.totalSal = ns[0]; }
+
+  f.netAvant = lastNum(findLine(lines, (n) => /net (a|à) payer avant|net avant imp|net a payer avant/.test(n)));
+  f.netImpo = lastNum(findLine(lines, (n) => /net imposable|net fiscal|montant imposable/.test(n) && !/cumul/.test(n)));
+  f.netSocial = lastNum(findLine(lines, (n) => /net social/.test(n)));
+
+  const pasL = findLine(lines, (n) => /prelevement a la source|impot sur le revenu (preleve|retenu)|retenue a la source|^pas\b|impot preleve/.test(n) && !/net a payer avant|deductible/.test(n));
+  if (pasL) {
+    const pm = pasL.match(/(\d{1,2}[.,]\d{1,3})\s*%/);
+    if (pm) f.tauxPas = toNum(pm[1]);
+    const ns = numbersIn(pasL).filter((x) => !(pm && x === toNum(pm[1])));
+    if (ns.length) f.pas = Math.abs(ns[ns.length - 1]);
+    if (f.tauxPas == null && ns.length >= 3) { const t = ns[ns.length - 2]; if (t >= 0 && t <= 60) f.tauxPas = t; }
+  }
+
+  let npL = findLine(lines, (n) => /net (paye|verse|a verser)/.test(n) && !/avant/.test(n));
+  if (!npL) npL = findLine(lines, (n) => /net (a|à) payer/.test(n) && !/avant/.test(n));
+  f.netPaye = lastNum(npL);
+
+  f.cout = lastNum(findLine(lines, (n) => /total verse par l.employeur|cout (total|global|employeur|salarial total)|total employeur/.test(n)));
+
+  const periode = (text.match(/p[ée]riode[^\n]*?du\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+au\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/i) || text.match(/du\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+au\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/i));
+  f._periode = periode ? "Période du " + periode[1] + " au " + periode[2] : "";
+  f._cadre = /\bcadre\b/.test(norm(text)) && !/non[- ]cadre/.test(norm(text));
+  f._alsace = /alsace|moselle|regime local/.test(norm(text));
+  return { lines, f };
+}
+
+/* ------------------------------------------------------------------ */
+/* Glossaire ligne par ligne                                           */
+/* ------------------------------------------------------------------ */
+const SAL = "Toi", PAT = "Employeur", BOTH = "Toi + employeur", NONE = "—";
+const GLOSSARY = [
+  [/evolution de la remuneration|suppression des cotisations/, "Gain lié aux réformes", "Information seulement : ce que tu as gagné grâce à la suppression des cotisations chômage et maladie salariées en 2018.", NONE],
+  [/salaire de base|salaire mensuel|appointements|salaire forfaitaire/, "Salaire de base", "Ton salaire prévu au contrat : heures × taux horaire. C'est le point de départ.", NONE],
+  [/heures? sup|heures? compl|majoration|\bhs\b/, "Heures supplémentaires", "Heures au-delà de 35 h/semaine. Majorées d'au moins 25 % (les 8 premières), puis 50 %. Elles sont en partie exonérées d'impôt et de cotisations.", NONE],
+  [/absence|retenue|entree\/sortie|maladie non|sans solde/, "Absence / retenue", "Somme retirée du salaire pour une absence non payée. Vérifie que les dates correspondent.", NONE],
+  [/indemnite (de )?conges|conges payes|\bicp\b|\bcp\b/, "Congés payés", "Paiement ou décompte de tes congés payés : tu gagnes 2,5 jours ouvrables par mois travaillé.", NONE],
+  [/prime|gratification|13e mois|treizieme|bonus|anciennete/, "Prime", "Somme en plus du salaire de base. Elle est soumise aux cotisations comme le salaire.", NONE],
+  [/avantage en nature|repas|logement/, "Avantage en nature", "Valeur d'un avantage fourni (repas, logement, voiture). Ajouté au brut pour les cotisations, puis retiré du net.", NONE],
+  [/brut/, "Salaire brut", "Total de ce que tu as gagné avant qu'on retire les cotisations sociales.", NONE],
+  [/complementaire sante|mutuelle|frais de sante/, "Mutuelle (complémentaire santé)", "Rembourse ce que la Sécu ne paie pas (dentiste, lunettes…). L'employeur doit payer au moins la moitié.", BOTH],
+  [/prevoyance|incapacite/, "Prévoyance", "Assurance qui complète tes revenus en cas d'arrêt long, d'invalidité ou de décès.", BOTH],
+  [/accident|at\s*\/?\s*mp|at-mp/, "Accidents du travail", "Couvre les accidents au travail et les maladies professionnelles. Payée uniquement par l'employeur, taux propre à l'entreprise.", PAT],
+  [/maladie|sante/, "Assurance maladie (Sécu)", "Finance tes remboursements de soins, arrêts maladie, maternité. Payée par l'employeur (7 % ou 13 %). Côté salarié 0 %, sauf en Alsace-Moselle.", PAT],
+  [/deplafonn/, "Retraite de base (déplafonnée)", "Retraite de la Sécu, calculée sur tout le brut. Petit taux : 0,40 % pour toi.", BOTH],
+  [/plafonn|vieillesse/, "Retraite de base (plafonnée)", "Retraite de la Sécu, calculée sur le brut jusqu'au plafond (4 005 € par mois en 2026). 6,90 % pour toi.", BOTH],
+  [/\bceg\b|equilibre general/, "CEG (retraite complémentaire)", "Contribution d'équilibre général : complète la retraite complémentaire. 0,86 % pour toi sur la tranche 1.", BOTH],
+  [/\bcet\b|equilibre technique/, "CET (retraite complémentaire)", "Contribution d'équilibre technique, seulement si ton brut dépasse le plafond Sécu.", BOTH],
+  [/apec/, "APEC", "Cotisation des cadres pour l'association qui les aide à trouver un emploi.", BOTH],
+  [/complementaire|agirc|arrco|tranche|\bt1\b|\bt2\b/, "Retraite complémentaire", "Ta 2e retraite (Agirc-Arrco), en plus de la Sécu. Tu gagnes des points chaque mois. 3,15 % pour toi sur la tranche 1.", BOTH],
+  [/famille|allocations familiales/, "Allocations familiales", "Finance la CAF. Payée uniquement par l'employeur.", PAT],
+  [/\bags\b|garantie des salaires/, "AGS", "Garantit le paiement de ton salaire si l'entreprise fait faillite. Employeur uniquement.", PAT],
+  [/chomage|assurance emploi|pole emploi|france travail/, "Assurance chômage", "Finance tes droits au chômage. Depuis 2018, payée uniquement par l'employeur.", PAT],
+  [/autres contributions|fnal|\bcsa\b|solidarite autonomie|formation|apprentissage|mobilite|transport|dialogue social|forfait social/, "Autres contributions employeur", "Petites taxes payées par l'employeur : logement (FNAL), autonomie (CSA), formation, apprentissage, transports… Rien n'est retiré de ton salaire.", PAT],
+  [/csg.*non[- ]?deductible|crds|non deductible/, "CSG/CRDS non déductible", "Impôt qui finance la Sécu et sa dette. 2,90 % de 98,25 % du brut. Elle est retirée de ton salaire mais tu payes quand même l'impôt dessus.", SAL],
+  [/csg/, "CSG déductible", "Impôt qui finance la Sécu. 6,80 % de 98,25 % du brut. Il est déduit de ton revenu imposable.", SAL],
+  [/allegement|allegement|exoneration|reduction generale|rgdu|reduction de cotisation/, "Allègement de cotisations", "Réduction accordée par l'État à l'employeur sur les bas et moyens salaires. Ça baisse son coût, ça ne change rien pour toi.", PAT],
+  [/total (des )?(cotisations|retenues|charges)/, "Total des cotisations", "Somme de toutes les cotisations : à gauche ta part, à droite celle de l'employeur.", BOTH],
+  [/net (a|à) payer avant|net avant imp/, "Net avant impôt", "Brut moins tes cotisations. C'est ton salaire réel avant le prélèvement de l'impôt.", NONE],
+  [/net imposable|net fiscal/, "Net imposable", "Montant sur lequel on calcule ton impôt : net avant impôt + CSG/CRDS non déductible + part employeur de la mutuelle.", NONE],
+  [/impot|prelevement a la source|retenue a la source|\bpas\b/, "Impôt à la source", "Impôt sur le revenu prélevé directement : net imposable × ton taux (donné par les impôts).", SAL],
+  [/net social/, "Montant net social", "Revenu à déclarer à la CAF (prime d'activité, RSA). Obligatoire depuis 2024.", NONE],
+  [/titre[s]?[- ]restaurant|ticket|panier/, "Titres-restaurant", "Ta part des tickets resto, retirée du net. L'employeur paie entre 50 et 60 %.", SAL],
+  [/acompte|avance/, "Acompte", "Argent déjà versé avant la fin du mois, donc retiré du net à payer.", NONE],
+  [/navigo|remboursement transport|frais de transport|indemnite (kilometrique|transport)/, "Remboursement transport", "L'employeur rembourse au moins 50 % de ton abonnement de transport. Ajouté au net.", PAT],
+  [/net (paye|verse|a payer)/, "Net payé", "Ce qui arrive vraiment sur ton compte bancaire.", NONE],
+  [/total verse|cout (total|global|employeur)/, "Coût total employeur", "Ce que tu coûtes à l'employeur : brut + ses cotisations − ses allègements.", PAT],
+];
+
+/* ------------------------------------------------------------------ */
+/* Contrôle cotisation par cotisation                                  */
+/* ------------------------------------------------------------------ */
+function cotisModel(v, P) {
+  const brut = v.brut, pmss = P.pmss, t1 = Math.min(brut, pmss), t2 = Math.max(0, Math.min(brut, 8 * pmss) - pmss);
+  const csgBase = brut * P.abattCSG / 100;
+  const smicM = P.smic * 151.67;
+  const items = [
+    { label: "Retraite Sécu plafonnée", test: (n) => /plafonn/.test(n) && !/deplafonn/.test(n), base: t1, sal: [6.90], pat: [8.55] },
+    { label: "Retraite Sécu déplafonnée", test: (n) => /deplafonn/.test(n), base: brut, sal: [0.40], pat: [2.11, 2.02] },
+    { label: "Retraite complémentaire tranche 1", test: (n) => /(complementaire|agirc|arrco|retraite).*(tranche 1|tranche a|\bt1\b|\btr ?1\b)|^tranche 1/.test(n) && !/ceg|equilibre|sante/.test(n), base: t1, sal: [3.15], pat: [4.72] },
+    { label: "CEG tranche 1", test: (n) => /\bceg\b|equilibre general/.test(n) && !/tranche 2|\bt2\b/.test(n), base: t1, sal: [0.86], pat: [1.29], skipIf: t2 > 0 },
+    { label: "Assurance maladie", test: (n) => /maladie/.test(n) && !/complementaire|mutuelle|prevoyance|professionnelle|suppression|evolution/.test(n), base: brut, sal: v.alsace ? [1.30] : [], pat: [7.00, 13.00], note: "Taux employeur 7 % si brut ≤ 2,25 SMIC (" + eur(2.25 * smicM) + "), sinon 13 %." },
+    { label: "Allocations familiales", test: (n) => /famille|allocations familiales/.test(n), base: brut, sal: [], pat: [3.45, 5.25] },
+    { label: "Assurance chômage", test: (n) => /chomage/.test(n) && !/\bags\b|suppression|evolution/.test(n), base: Math.min(brut, 4 * pmss), sal: [], pat: [4.00, 4.05] },
+    { label: "CSG déductible", test: (n) => /csg/.test(n) && /deductible/.test(n) && !/non[- ]?deductible/.test(n), base: csgBase, sal: [6.80], pat: [] },
+    { label: "CSG/CRDS non déductible", test: (n) => /(csg|crds)/.test(n) && (/non[- ]?deductible/.test(n) || /crds/.test(n)), base: csgBase, sal: [2.90, 2.40, 0.50], pat: [] },
+  ];
+  if (t2 > 0) {
+    items.push({ label: "Retraite complémentaire tranche 2", test: (n) => /(complementaire|agirc|arrco|retraite).*(tranche 2|tranche b|\bt2\b)/.test(n) && !/ceg|equilibre/.test(n), base: t2, sal: [8.64], pat: [12.95] });
+    items.push({ label: "CET", test: (n) => /\bcet\b|equilibre technique/.test(n), base: Math.min(brut, 8 * pmss), sal: [0.14], pat: [0.21] });
+  }
+  if (v.cadre) items.push({ label: "APEC (cadres)", test: (n) => /apec/.test(n), base: Math.min(brut, 4 * pmss), sal: [0.024], pat: [0.036] });
+  return items;
+}
+
+function checkCotisations(lines, v, P) {
+  const out = [];
+  if (!(v.brut > 0)) return [{ s: "info", t: "Salaire brut manquant", d: "Indique ton salaire brut dans « Les chiffres lus » pour vérifier chaque cotisation." }];
+  for (const it of cotisModel(v, P)) {
+    if (it.skipIf) continue;
+    const line = lines.find((l) => it.test(norm(l)));
+    const expSal = it.sal.map((r) => ({ r, a: r2(it.base * r / 100) }));
+    const expPat = it.pat.map((r) => ({ r, a: r2(it.base * r / 100) }));
+    const describe = (arr) => arr.map((e) => pct(e.r, e.r < 0.1 ? 3 : 2) + " → " + eur(e.a)).join(" ou ");
+    if (!line) {
+      out.push({ s: "info", t: it.label, d: "Ligne non trouvée sur la fiche. Elle est peut-être regroupée avec une autre (ex : « Retraite »). Attendu : " + [expSal.length ? "toi " + describe(expSal) : "", expPat.length ? "employeur " + describe(expPat) : ""].filter(Boolean).join(" ; ") + " (base " + eur(it.base) + ")." });
+      continue;
+    }
+    const ns = numbersIn(line);
+    const tol = (a) => Math.max(0.06, a * 0.012);
+    const hit = (arr) => arr.find((e) => ns.some((n) => near(Math.abs(n), e.a, tol(e.a))));
+    const hs = hit(expSal), hp = hit(expPat);
+    const needS = expSal.length > 0, needP = expPat.length > 0;
+    const parts = [];
+    if (needS) parts.push(hs ? "ta part " + eur(hs.a) + " (" + pct(hs.r, hs.r < 0.1 ? 3 : 2) + ") ✓" : "ta part attendue " + describe(expSal) + " : <b>non retrouvée</b>");
+    if (needP) parts.push(hp ? "part employeur " + eur(hp.a) + " (" + pct(hp.r, hp.r < 0.1 ? 3 : 2) + ") ✓" : "part employeur attendue " + describe(expPat) + " : <b>non retrouvée</b>");
+    const okS = !needS || hs, okP = !needP || hp;
+    let s = okS && okP ? "ok" : (!okS ? "warn" : "info");
+    let extra = "";
+    if (!okP && okS) extra = " La part employeur ne change rien à ton salaire net, mais peut indiquer une erreur de taux.";
+    if (!okS) extra = " Cherche sur la ligne le montant de ta part : s'il est différent, demande une explication.";
+    if (it.note) extra += " " + it.note;
+    out.push({ s, t: it.label, d: parts.join(" · ") + "." + extra, src: line });
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
+/* Contrôles des calculs                                               */
+/* ------------------------------------------------------------------ */
+function expectedSalRate(v, P) {
+  const b = v.brut; if (!(b > 0)) return null;
+  const t1 = Math.min(b, P.pmss), t2 = Math.max(0, Math.min(b, 8 * P.pmss) - P.pmss), csgB = b * P.abattCSG / 100;
+  let s = t1 * 0.069 + b * 0.004 + t1 * 0.0315 + t1 * 0.0086 + csgB * 0.097;
+  if (t2 > 0) s += t2 * 0.0864 + t2 * 0.0108 + Math.min(b, 8 * P.pmss) * 0.0014;
+  if (v.cadre) s += Math.min(b, 4 * P.pmss) * 0.00024;
+  if (v.alsace) s += b * 0.013;
+  return s;
+}
+
+function checkCalculs(v, P) {
+  const out = [];
+  const has = (k) => v[k] != null && !isNaN(v[k]);
+
+  if (has("heures") && has("taux") && has("base")) {
+    const e = r2(v.heures * v.taux);
+    out.push(near(e, v.base, 0.05)
+      ? { s: "ok", t: "Salaire de base = heures × taux horaire", d: v.heures.toLocaleString("fr-FR") + " h × " + eur(v.taux) + " = <b>" + eur(e) + "</b>, comme sur ta fiche." }
+      : { s: "bad", t: "Salaire de base ≠ heures × taux horaire", d: v.heures.toLocaleString("fr-FR") + " h × " + eur(v.taux) + " = <b>" + eur(e) + "</b>, mais ta fiche indique " + eur(v.base) + " (écart " + eur(v.base - e) + ")." });
+  }
+
+  const tx = has("taux") ? v.taux : (has("heures") && v.heures > 0 && has("base") ? v.base / v.heures : null);
+  if (tx != null) {
+    out.push(tx + 0.005 >= P.smic
+      ? { s: "ok", t: "Au-dessus du SMIC", d: "Ton taux horaire (" + eur(tx) + ") est supérieur ou égal au SMIC 2026 (" + eur(P.smic) + ")." }
+      : { s: "bad", t: "En dessous du SMIC", d: "Ton taux horaire (" + eur(tx) + ") est inférieur au SMIC 2026 (" + eur(P.smic) + "). Sauf cas particulier (apprenti, moins de 18 ans), c'est interdit." });
+  }
+  if (has("heures")) {
+    const h = v.heures;
+    out.push({ s: "info", t: "Durée du travail", d: near(h, 151.67, 0.01) ? "151,67 h = 35 h par semaine × 52 semaines ÷ 12 mois. Tu es à temps plein, payé pareil chaque mois." : (h < 151.67 ? h.toLocaleString("fr-FR") + " h payées : temps partiel (≈ " + (h * 12 / 52).toFixed(1).replace(".", ",") + " h par semaine). Les heures en plus de ton contrat sont des heures complémentaires, majorées d'au moins 10 %." : h.toLocaleString("fr-FR") + " h payées : plus que 151,67 h, il doit donc y avoir des heures supplémentaires majorées.") });
+  }
+
+  if (has("brut") && has("totalSal") && has("netAvant")) {
+    const e = r2(v.brut - v.totalSal);
+    out.push(near(e, v.netAvant, 0.05)
+      ? { s: "ok", t: "Brut − cotisations = net avant impôt", d: eur(v.brut) + " − " + eur(v.totalSal) + " = <b>" + eur(e) + "</b> ✓" }
+      : { s: "warn", t: "Brut − cotisations ≠ net avant impôt", d: eur(v.brut) + " − " + eur(v.totalSal) + " = <b>" + eur(e) + "</b>, mais la fiche indique " + eur(v.netAvant) + " (écart " + eur(v.netAvant - e) + "). L'écart peut venir de titres-restaurant, d'un remboursement de transport ou d'un avantage en nature : vérifie qu'une ligne l'explique." });
+  }
+
+  if (has("brut") && has("netAvant")) {
+    const ret = v.brut - v.netAvant, rate = ret / v.brut * 100;
+    const exp = expectedSalRate(v, P), er = exp / v.brut * 100;
+    const diff = ret - exp;
+    const s = (diff >= -0.02 * v.brut && diff <= 0.05 * v.brut) ? "ok" : "warn";
+    out.push({ s, t: "Part des cotisations salariales", d: "On t'a retiré " + eur(ret) + ", soit <b>" + pct(rate, 1) + "</b> du brut. Les cotisations obligatoires représentent ≈ " + pct(er, 1) + " (" + eur(exp) + ")" + (s === "ok" ? ", la différence s'explique en général par la mutuelle et la prévoyance." : ". L'écart (" + eur(diff) + ") est inhabituel : vérifie les lignes de cotisations ci-dessous.") });
+  }
+
+  if (has("netImpo") && has("tauxPas") && has("pas")) {
+    const e = r2(v.netImpo * v.tauxPas / 100);
+    out.push(near(e, v.pas, 0.05)
+      ? { s: "ok", t: "Impôt = net imposable × taux", d: eur(v.netImpo) + " × " + pct(v.tauxPas) + " = <b>" + eur(e) + "</b> ✓" }
+      : { s: "bad", t: "Impôt prélevé incohérent", d: eur(v.netImpo) + " × " + pct(v.tauxPas) + " = <b>" + eur(e) + "</b>, mais " + eur(v.pas) + " ont été prélevés." });
+  }
+
+  if (has("netAvant") && has("netImpo") && has("brut")) {
+    const nd = r2(v.brut * P.abattCSG / 100 * 0.029);
+    const e = r2(v.netAvant + nd);
+    const d = r2(v.netImpo - e);
+    let s, txt;
+    if (near(d, 0, 0.1)) { s = "ok"; txt = "Net avant impôt " + eur(v.netAvant) + " + CSG/CRDS non déductible ≈ " + eur(nd) + " = <b>" + eur(e) + "</b> ✓"; }
+    else if (d > 0 && d < 0.06 * v.brut) { s = "ok"; txt = "Net avant impôt + CSG/CRDS non déductible = " + eur(e) + ". Les " + eur(d) + " en plus correspondent en général à la part employeur de ta mutuelle, qui est imposable."; }
+    else if (d < 0 && d > -0.15 * v.brut) { s = "warn"; txt = "Le net imposable (" + eur(v.netImpo) + ") est plus bas qu'attendu (" + eur(e) + "). Normal seulement si tu as des heures supplémentaires exonérées ou une prime défiscalisée. Sinon, demande une explication."; }
+    else { s = "warn"; txt = "Le net imposable (" + eur(v.netImpo) + ") s'éloigne beaucoup du montant attendu (" + eur(e) + ")."; }
+    out.push({ s, t: "Net imposable", d: txt });
+  }
+
+  if (has("netAvant") && has("netPaye")) {
+    const pasV = has("pas") ? v.pas : 0;
+    const e = r2(v.netAvant - pasV), d = r2(v.netPaye - e);
+    out.push(near(d, 0, 0.05)
+      ? { s: "ok", t: "Net payé = net avant impôt − impôt", d: eur(v.netAvant) + " − " + eur(pasV) + " = <b>" + eur(e) + "</b> ✓" }
+      : { s: "warn", t: "Net payé différent du calcul", d: eur(v.netAvant) + " − " + eur(pasV) + " = <b>" + eur(e) + "</b>, mais " + eur(v.netPaye) + " t'ont été versés (écart " + eur(d) + "). Une ligne doit l'expliquer : acompte, titres-restaurant, remboursement de transport, saisie sur salaire…" });
+  }
+
+  if (has("cout") && has("brut")) {
+    out.push(v.cout >= v.brut
+      ? { s: "ok", t: "Coût employeur", d: "Tu coûtes " + eur(v.cout) + " à ton employeur, soit " + pct((v.cout / v.brut - 1) * 100, 0) + " de plus que ton brut." }
+      : { s: "warn", t: "Coût employeur plus petit que le brut", d: "Ce n'est pas possible : vérifie la valeur lue." });
+    if (has("totalPat")) {
+      const e = r2(v.brut + v.totalPat);
+      if (!near(e, v.cout, 0.1)) out.push({ s: "info", t: "Coût employeur ≠ brut + cotisations employeur", d: eur(v.brut) + " + " + eur(v.totalPat) + " = " + eur(e) + " pour " + eur(v.cout) + " indiqué. Peut s'expliquer par la part employeur des titres-restaurant ou du transport." });
+    }
+  }
+  if (!out.length) out.push({ s: "info", t: "Pas assez de chiffres", d: "Remplis au moins le brut, le net avant impôt et le net payé dans « Les chiffres lus sur ta fiche »." });
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
+/* Mentions obligatoires                                               */
+/* ------------------------------------------------------------------ */
+const MENTIONS = [
+  ["Nom et adresse de l'employeur", /\b(sarl|sas|sasu|eurl|sa|sci|snc|scop|association|societe|entreprise|employeur|etablissement)\b|\b\d{5}\s+[a-z]/, "oblig"],
+  ["Numéro SIRET de l'établissement", /siret|\b\d{3}\s?\d{3}\s?\d{3}\s?\d{5}\b/, "oblig"],
+  ["Code APE / NAF", /\b(ape|naf)\b/, "oblig"],
+  ["Convention collective applicable", /convention collective|idcc|\bccn\b|code du travail/, "oblig", "S'il n'y en a pas, la fiche doit l'indiquer et renvoyer au Code du travail. La convention collective fixe ton salaire minimum, tes primes et ta classification : sans elle tu ne peux pas vérifier tes droits."],
+  ["Organisme de recouvrement (URSSAF ou MSA) et numéro", /urssaf|\bmsa\b/, "oblig"],
+  ["Nom du salarié", /salarie|\bm\.|mme|monsieur|madame|nom/, "oblig"],
+  ["Emploi occupé", /emploi|poste|fonction|qualification|metier/, "oblig"],
+  ["Position dans la classification (coefficient, niveau, échelon…)", /coef|niveau|echelon|classification|categorie|position|indice|statut/, "oblig", "Elle détermine ton salaire minimum dans la convention collective."],
+  ["Période de paie", /periode|du \d{1,2}\/\d{1,2}\/\d{2,4}\s*au|mois de|paie de/, "oblig"],
+  ["Nombre d'heures payées", /heure|151[,.]67|forfait/, "oblig", "Les heures normales et les heures supplémentaires doivent apparaître séparément."],
+  ["Salaire de base / taux horaire", /salaire de base|taux horaire|salaire mensuel|appointement|salaire forfaitaire/, "oblig"],
+  ["Salaire brut", /brut/, "oblig"],
+  ["Cotisations Santé", /sante|maladie/, "oblig"],
+  ["Accidents du travail – maladies professionnelles", /accident|at\s*\/?\s*mp|at-mp/, "oblig"],
+  ["Cotisations Retraite", /retraite|vieillesse/, "oblig"],
+  ["Famille", /famille|allocations familiales/, "oblig"],
+  ["Assurance chômage", /chomage|assurance emploi/, "oblig", "Pour les particuliers employeurs (CESU, Pajemploi), elle peut être regroupée."],
+  ["Autres contributions dues par l'employeur", /autres contributions|fnal|\bcsa\b|formation professionnelle|mobilite|dialogue social/, "oblig"],
+  ["CSG / CRDS", /csg|crds/, "oblig"],
+  ["Total des cotisations et contributions", /total (des )?(cotisations|retenues|charges)/, "oblig"],
+  ["Allègements / exonérations de cotisations employeur", /allegement|exoneration|reduction generale|rgdu|reduction (de )?cotisation/, "situ", "Obligatoire quand l'employeur en bénéficie, ce qui est presque toujours le cas sous 3 SMIC."],
+  ["Net à payer avant impôt sur le revenu", /net (a|à) payer avant|net avant imp/, "oblig"],
+  ["Net imposable", /net imposable|net fiscal|montant imposable/, "oblig"],
+  ["Impôt prélevé à la source (base, taux, montant)", /prelevement a la source|impot sur le revenu preleve|impot preleve|retenue a la source|\bpas\b|taux (personnalise|non personnalise|neutre)/, "oblig"],
+  ["Net payé / versé", /net (paye|verse|a verser)|net (a|à) payer(?!\s*avant)/, "oblig"],
+  ["Montant net social", /net social/, "oblig", "Obligatoire depuis 2024. C'est ce montant que tu déclares à la CAF pour la prime d'activité ou le RSA."],
+  ["Date de paiement", /date de (paiement|versement|paie)|pa(ye|iement) le|verse le|paiement :/, "oblig"],
+  ["Congés payés (dates de congé et indemnité)", /conges|\bcp\b/, "situ", "Obligatoire si tu as pris des congés ce mois-ci. Beaucoup d'employeurs affichent aussi le solde : c'est conseillé."],
+  ["Heures supplémentaires (nombre et majoration)", /heures? sup|majoration|\bhs\b|heures? compl/, "situ", "Obligatoire seulement si tu en as fait."],
+  ["Total versé par l'employeur (coût total)", /total verse par l.employeur|cout (total|global|employeur)/, "oblig"],
+  ["Mention « à conserver sans limitation de durée »", /sans limitation de duree|conserve[rz]/, "oblig"],
+  ["Renvoi vers service-public.fr (rubrique bulletin de paie)", /service-public|service public/, "oblig"],
+];
+
+function checkMentions(text) {
+  const n = norm(text);
+  return MENTIONS.map(([label, re, lvl, note]) => {
+    const found = re.test(n);
+    if (found) return { s: "ok", t: label, d: "Trouvé sur la fiche." };
+    if (lvl === "situ") return { s: "info", t: label, d: "Non trouvé. " + (note || "") };
+    return { s: "bad", t: label, d: "<b>Non trouvé.</b> " + (note || "Cette mention est obligatoire.") };
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Rendu                                                               */
+/* ------------------------------------------------------------------ */
+const STATE = { text: "", lines: [], found: {}, meta: {}, results: null };
+const STATUS_LABEL = { ok: "OK", warn: "À vérifier", bad: "Problème", info: "Info" };
+
+function renderChecks(ulId, countId, items) {
+  $(ulId).innerHTML = items.map((c) => `<li class="${c.s}"><span class="stripe"></span><div class="body"><div class="row1"><span class="pill ${c.s}">${STATUS_LABEL[c.s]}</span><span class="title">${esc(c.t)}</span></div><div class="detail">${c.d}</div>${c.src ? `<code class="src">${esc(c.src)}</code>` : ""}</div></li>`).join("");
+  const cnt = { ok: 0, warn: 0, bad: 0, info: 0 }; items.forEach((c) => cnt[c.s]++);
+  $(countId).innerHTML = ["bad", "warn", "ok"].filter((k) => cnt[k]).map((k) => `<span class="pill ${k}">${cnt[k]} ${STATUS_LABEL[k].toLowerCase()}</span>`).join("");
+}
+
+function buildForm() {
+  $("form").innerHTML = FIELDS.map((f) => `<div class="field"><label for="f-${f.id}">${f.label}</label><input id="f-${f.id}" inputmode="decimal" autocomplete="off">${f.hint ? `<span class="hint">${f.hint}</span>` : ""}</div>`).join("") +
+    `<div class="field check"><input type="checkbox" id="f-cadre"><label for="f-cadre">Je suis cadre</label></div>` +
+    `<div class="field check"><input type="checkbox" id="f-alsace"><label for="f-alsace">Je travaille en Alsace-Moselle</label></div>`;
+  $("params").innerHTML = PARAMS.map((p) => `<div class="field"><label for="p-${p.id}">${p.label}</label><input id="p-${p.id}" inputmode="decimal" value="${String(p.value).replace(".", ",")}"></div>`).join("");
+  document.querySelectorAll("#form input, #params input").forEach((i) => i.addEventListener("input", recompute));
+}
+
+function readVal(id) { const s = $(id).value.trim(); if (!s) return null; const n = toNum(s.replace(/[€%\s]/g, "")); return isNaN(n) ? null : n; }
+function getValues() {
+  const v = {}; FIELDS.forEach((f) => v[f.id] = readVal("f-" + f.id));
+  v.cadre = $("f-cadre").checked; v.alsace = $("f-alsace").checked;
+  const P = {}; PARAMS.forEach((p) => P[p.id] = readVal("p-" + p.id) ?? p.value);
+  return { v, P };
+}
+
+function renderSummary(v) {
+  const has = (k) => v[k] != null;
+  const brut = v.brut, netAvant = v.netAvant, pas = v.pas ?? 0;
+  const netPaye = v.netPaye ?? (has("netAvant") ? netAvant - pas : null);
+  const cot = has("brut") && has("netAvant") ? brut - netAvant : v.totalSal;
+  const tiles = [
+    ["Salaire brut", brut],
+    ["Cotisations retirées", cot != null ? -cot : null],
+    ["Impôt à la source", has("pas") ? -pas : null],
+    ["Net versé sur ton compte", netPaye, true],
+    ["Coût pour l'employeur", v.cout],
+  ];
+  $("tiles").innerHTML = tiles.map(([k, val, hl]) => `<div class="tile${hl ? " hl" : ""}"><span class="k">${k}</span><span class="v">${eur(val)}</span></div>`).join("");
+  const total = v.cout && v.cout > (brut || 0) ? v.cout : brut;
+  if (total > 0 && netPaye != null && cot != null) {
+    const parts = [["--bar-net", netPaye, "Net versé"], ["--bar-tax", pas, "Impôt"], ["--bar-cot", cot, "Tes cotisations"]];
+    if (v.cout && v.cout > brut) parts.push(["--bar-pat", v.cout - brut, "Cotisations employeur"]);
+    $("bar").innerHTML = parts.map(([c, val]) => `<span style="width:${Math.max(0, val / total * 100)}%;background:var(${c})"></span>`).join("");
+    $("legend").innerHTML = parts.map(([c, val, l]) => `<span><i style="background:var(${c})"></i>${l} ${pct(val / total * 100, 0)}</span>`).join("");
+  } else { $("bar").innerHTML = ""; $("legend").innerHTML = ""; }
+  if (brut > 0 && netPaye != null) {
+    const per100 = netPaye / brut * 100;
+    let s = `Sur <strong>100 €</strong> de salaire brut, tu touches <strong>${per100.toFixed(0)} €</strong> sur ton compte.`;
+    if (cot != null) s += ` <strong>${(cot / brut * 100).toFixed(0)} €</strong> partent en cotisations (retraite, Sécu, CSG)`;
+    if (pas) s += ` et <strong>${(pas / brut * 100).toFixed(0)} €</strong> en impôt`;
+    s += ".";
+    if (v.cout > brut) s += ` Pour te verser ce salaire, ton employeur dépense en tout <strong>${eur(v.cout)}</strong>.`;
+    $("plain").innerHTML = s;
+  } else $("plain").textContent = "Complète le brut et le net payé pour voir le résumé.";
+}
+
+function renderLines(lines) {
+  const rows = [];
+  for (const l of lines) {
+    const ns = numbersIn(l);
+    if (!ns.length) continue;
+    const n = norm(l);
+    const g = GLOSSARY.find(([re]) => re.test(n));
+    if (g) rows.push(`<tr><td class="lbl">${esc(l)}</td><td><span class="t">${g[1]}</span>${g[2]}</td><td class="who">${g[3]}</td></tr>`);
+    else if (ns.length >= 2 && /[a-z]{3}/.test(n)) rows.push(`<tr><td class="lbl">${esc(l)}</td><td><span class="t">Ligne non reconnue</span><span class="muted">Si c'est une cotisation ou une retenue, demande à quoi elle correspond.</span></td><td class="who">?</td></tr>`);
+  }
+  $("lines").innerHTML = rows.join("") || `<tr><td colspan="3" class="muted">Aucune ligne chiffrée lue.</td></tr>`;
+  $("lignes-count").textContent = rows.length ? rows.length + " lignes chiffrées" : "";
+}
+
+function recompute() {
+  const { v, P } = getValues();
+  FIELDS.forEach((f) => $("f-" + f.id).classList.toggle("found", STATE.found[f.id] != null && readVal("f-" + f.id) === STATE.found[f.id]));
+  renderSummary(v);
+  const calc = checkCalculs(v, P), cotis = checkCotisations(STATE.lines, v, P), ment = checkMentions(STATE.text);
+  renderChecks("checks-calc", "count-calc", calc);
+  renderChecks("checks-cotis", "count-cotis", cotis);
+  renderChecks("checks-mentions", "count-mentions", ment);
+  STATE.results = { calc, cotis, ment, v };
+}
+
+function analyse(text, msg, kind) {
+  STATE.text = text;
+  const { lines, f } = extract(text);
+  STATE.lines = lines;
+  STATE.found = {};
+  FIELDS.forEach((fd) => {
+    const val = f[fd.id];
+    STATE.found[fd.id] = val ?? null;
+    $("f-" + fd.id).value = val != null ? String(val).replace(".", ",") : "";
+  });
+  $("f-cadre").checked = !!f._cadre; $("f-alsace").checked = !!f._alsace;
+  $("periode-lue").textContent = f._periode;
+  $("raw").textContent = text;
+  renderLines(lines);
+  recompute();
+  setStatus(msg, kind);
+}
+
+function reportText() {
+  const R = STATE.results; if (!R) return "";
+  const strip = (h) => h.replace(/<[^>]+>/g, "");
+  const sect = (title, arr) => title + "\n" + arr.filter((c) => c.s === "bad" || c.s === "warn").map((c) => "- " + c.t + " : " + strip(c.d)).join("\n");
+  const missing = R.ment.filter((c) => c.s === "bad").map((c) => "- " + c.t).join("\n");
+  return [
+    "Analyse de ma fiche de paie" + ($("periode-lue").textContent ? " (" + $("periode-lue").textContent + ")" : ""),
+    "",
+    sect("Points de calcul à vérifier :", R.calc.concat(R.cotis)) || "",
+    "",
+    "Mentions obligatoires (art. R3243-1 du Code du travail) que je ne trouve pas :",
+    missing || "- aucune",
+    "",
+    "Pouvez-vous m'apporter des explications ou me transmettre un bulletin corrigé ?",
+  ].join("\n");
+}
+
+/* ------------------------------------------------------------------ */
+/* Événements                                                          */
+/* ------------------------------------------------------------------ */
+buildForm();
+$("file").addEventListener("change", (e) => handleFile(e.target.files[0]));
+const drop = $("drop");
+["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", (e) => handleFile(e.dataTransfer.files[0]));
+$("btn-paste").addEventListener("click", () => { $("paste-box").hidden = !$("paste-box").hidden; if (!$("paste-box").hidden) $("paste-area").focus(); });
+$("btn-analyse-paste").addEventListener("click", () => { const t = $("paste-area").value; if (t.trim()) analyse(t, "Texte collé analysé. Vérifie les chiffres lus ci-dessous."); });
+$("btn-example").addEventListener("click", () => analyse(EXAMPLE, "Exemple fictif chargé : ce ne sont pas tes chiffres. Dépose ta propre fiche pour l'analyser.", "example"));
+$("btn-copy").addEventListener("click", () => {
+  const t = reportText();
+  const fallback = () => { const ta = $("report-fallback"); ta.hidden = false; ta.value = t; ta.select(); $("copied").textContent = "Sélectionne le texte et copie-le."; };
+  try { navigator.clipboard.writeText(t).then(() => { $("copied").textContent = "Rapport copié."; }, fallback); } catch (e) { fallback(); }
+});
+
+analyse(EXAMPLE, "Exemple fictif chargé : ce ne sont pas tes chiffres. Dépose ta propre fiche pour l'analyser.", "example");
+</script>
+
+</body>
+</html>
