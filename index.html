@@ -397,6 +397,7 @@ table.multi td.n { font-family: var(--font-num); text-align: right; }
     <span><strong>© 2026 Antoine M.M – Tous droits réservés.</strong></span>
     <span>Toute reproduction, copie, modification ou diffusion de cette application, totale ou partielle, sans autorisation écrite de l'auteur est interdite.</span>
     <span>Composants libres utilisés : pdf.js (licence Apache 2.0).</span>
+    <span id="app-build"></span>
   </footer>
 </div>
 
@@ -2125,7 +2126,14 @@ setupAI();
 analyse(EXAMPLE, "Exemple fictif chargé : ce ne sont pas tes chiffres. Dépose tes propres fiches pour les analyser.", "example", "Exemple");
 </script>
 
-<script>if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });</script>
+<script>window.APP_BUILD = "12/11/2026 19:41";
+if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+  var hadController = !!navigator.serviceWorker.controller, reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", function () { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
+  window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(function (r) { r.update(); }).catch(function () {}); });
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") navigator.serviceWorker.getRegistration().then(function (r) { if (r) r.update(); }); });
+}
+var vb = document.getElementById("app-build"); if (vb) vb.textContent = "Version du " + window.APP_BUILD;</script>
 
 </body>
 </html>

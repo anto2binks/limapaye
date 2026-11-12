@@ -22,8 +22,17 @@ pwa = ('<link rel="manifest" href="manifest.webmanifest">\n'
        '<meta name="apple-mobile-web-app-status-bar-style" content="default">\n'
        '<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">\n'
        '<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">\n')
-sw_reg = ('<script>if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) '
-          'window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });</script>\n')
+import datetime
+from zoneinfo import ZoneInfo
+stamp = datetime.datetime.now(ZoneInfo("Europe/Paris")).strftime("%d/%m/%Y %H:%M")
+sw_reg = ('<script>window.APP_BUILD = "' + stamp + '";\n'
+          'if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {\n'
+          '  var hadController = !!navigator.serviceWorker.controller, reloaded = false;\n'
+          '  navigator.serviceWorker.addEventListener("controllerchange", function () { if (hadController && !reloaded) { reloaded = true; location.reload(); } });\n'
+          '  window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(function (r) { r.update(); }).catch(function () {}); });\n'
+          '  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") navigator.serviceWorker.getRegistration().then(function (r) { if (r) r.update(); }); });\n'
+          '}\n'
+          'var vb = document.getElementById("app-build"); if (vb) vb.textContent = "Version du " + window.APP_BUILD;</script>\n')
 foot = "\n</body>\n</html>\n"
 
 index = head + pwa + "</head>\n<body>\n" + src + "\n" + sw_reg + foot
@@ -39,5 +48,5 @@ inline = ('<script id="pdfjs-worker-src" type="text/plain">' + worker + '</scrip
           '<script>' + lib + '</script>')
 import os
 os.makedirs("dist", exist_ok=True)
-open("dist/fiche-paie.html", "w", encoding="utf-8").write(head + "</head>\n<body>\n" + src.replace(tag, inline) + foot)
+open("dist/fiche-paie.html", "w", encoding="utf-8").write(head + "</head>\n<body>\n" + src.replace(tag, inline) + '\n<script>window.APP_BUILD = "' + stamp + '"; var vb = document.getElementById("app-build"); if (vb) vb.textContent = "Version du " + window.APP_BUILD;</script>' + foot)
 PY
