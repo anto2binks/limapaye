@@ -186,7 +186,7 @@ table.multi td.n { font-family: var(--font-num); text-align: right; }
     <ul class="checks">
       <li class="ok"><span class="stripe"></span><div class="body"><div class="row1"><span class="title">Tes PDF restent sur ton appareil</span></div><div class="detail">La lecture et toutes les vérifications se font dans ton navigateur. La page ne contacte aucun service externe : pas de polices en ligne, pas de bibliothèque chargée ailleurs, pas de statistiques.</div></div></li>
       <li class="ok"><span class="stripe"></span><div class="body"><div class="row1"><span class="title">Rien n'est enregistré</span></div><div class="detail">Tes fiches ne sont stockées nulle part, ni sur un serveur ni dans le navigateur : fermer ou recharger la page les efface. Seuls les montants unitaires des paniers sont gardés sur cet appareil (« Tout effacer » les supprime).</div></div></li>
-      <li class="ok"><span class="stripe"></span><div class="body"><div class="row1"><span class="title">La page est privée</span></div><div class="detail">Seul le propriétaire du lien peut l'ouvrir, tant qu'il ne la partage pas. Et même partagée, elle ne contient que le programme, jamais tes fiches.</div></div></li>
+      <li class="ok"><span class="stripe"></span><div class="body"><div class="row1"><span class="title">Partager l'application ne partage pas tes fiches</span></div><div class="detail">L'application ne contient que le programme. Tes fiches, tes heures et tes résultats n'existent que sur ton écran, le temps que la page est ouverte.</div></div></li>
       <li class="info"><span class="stripe"></span><div class="body"><div class="row1"><span class="title">Seule exception : l'analyse détaillée par Claude</span></div><div class="detail">Uniquement si tu cliques sur le bouton, et après ton accord. Le texte est anonymisé avant l'envoi (nom, prénom, adresse, n° de Sécu, IBAN, e-mail, téléphone retirés partout). Tu peux lire exactement ce qui part dans « Voir le texte envoyé à Claude ». Il est traité par ton compte Claude, comme une conversation.</div></div></li>
     </ul>
   </details>
@@ -516,7 +516,7 @@ function layoutPage(items) {
 
 async function readPdf(file) {
   if (!window.pdfjsLib) throw new Error("Le lecteur PDF n'a pas pu se charger. Vérifie ta connexion, ou utilise « Coller le texte ».");
-  pdfjsLib.GlobalWorkerOptions.workerSrc = "vendor/pdf.worker.min.js";
+  pdfjsLib.GlobalWorkerOptions.workerSrc = window.PDFJS_WORKER_URL || "vendor/pdf.worker.min.js";
   const data = new Uint8Array(await file.arrayBuffer());
   const pdf = await pdfjsLib.getDocument({ data, isEvalSupported: false, disableFontFace: true, useSystemFonts: false }).promise;
   const out = [];
