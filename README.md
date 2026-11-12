@@ -1,6 +1,9 @@
 # Décodeur de fiche de paie
 
-Application web (une seule page, tout tourne dans le navigateur) qui analyse une fiche de paie française :
+Application web (une seule page, tout tourne dans le navigateur) qui analyse les fiches de paie françaises, quel que soit le logiciel qui les produit (TESE/CEA de l'URSSAF, Sage, Silae, PayFit, ADP, Cegid…) :
+
+- **Heures** : heures sup (25 % / 50 %), heures complémentaires (10 % / 25 %), absences, heures en h/min ; comparaison avec les heures notées semaine par semaine.
+- **Plusieurs mois** : réduction de cotisations sur heures sup, défiscalisation (7 500 €), net social, paniers.
 
 - **Résumé en clair** : brut → cotisations → impôt → net versé, coût employeur.
 - **Vérification des calculs** : heures × taux, SMIC, brut − cotisations, net imposable, impôt à la source, net payé.

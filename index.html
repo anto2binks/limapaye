@@ -203,7 +203,7 @@ table.multi td.n { font-family: var(--font-num); text-align: right; }
     <div class="drop" id="drop">
       <div class="txt">
         <strong>Glisse tes fiches de paie ici</strong>
-        <span class="muted small">Un ou plusieurs PDF (ceux téléchargés sur le site de l'URSSAF ou de ton employeur). Plusieurs mois permettent de vérifier les heures sup et les paniers dans le temps.</span>
+        <span class="muted small">Un ou plusieurs PDF, quel que soit le logiciel de paie (URSSAF/TESE, CEA, Sage, Silae, PayFit, ADP, Cegid…). Plusieurs mois permettent de vérifier les heures sup et les paniers dans le temps.</span>
       </div>
       <div class="btns">
         <label class="btn primary" for="file">Choisir des fiches</label>
@@ -250,6 +250,7 @@ table.multi td.n { font-family: var(--font-num); text-align: right; }
       <div class="btns">
         <button type="button" id="week-add">+ Ajouter une semaine</button>
         <button type="button" id="week-del">− Retirer la dernière</button>
+        <label class="field" for="week-contrat" style="flex:0 1 170px"><span class="small"><b>Contrat (h/semaine)</b></span><input id="week-contrat" inputmode="decimal" value="35"></label>
         <label class="field" for="week-mode" style="flex:1 1 220px"><span class="small"><b>Décompte des heures sup</b></span>
           <select id="week-mode"><option value="week">Par semaine (règle générale)</option><option value="two">Sur 2 semaines (si un accord le prévoit)</option></select></label>
       </div>
@@ -523,7 +524,7 @@ async function readPdf(file) {
     if (p < pdf.numPages) out.push("");
   }
   const text = out.join("\n");
-  if (text.replace(/\s/g, "").length < 40) throw new Error("Ce PDF ne contient pas de texte lisible (c'est sûrement un scan). Essaie de l'envoyer en photo, ou recopie les lignes avec « Coller le texte ».");
+  if (text.replace(/\s/g, "").length < 40) throw new Error("Ce PDF est une image scannée : il ne contient pas de texte lisible. Télécharge le PDF original depuis ton espace salarié (ou demande-le à ton employeur), ou recopie les lignes avec « Coller le texte ».");
   return text;
 }
 
@@ -531,9 +532,12 @@ async function readPdf(file) {
 /* Extraction des chiffres clés                                        */
 /* ------------------------------------------------------------------ */
 const FIELDS = [
-  { id: "heures", label: "Heures payées", hint: "151,67 h = 35 h par semaine" },
+  { id: "heures", label: "Heures payées au total", hint: "Base + heures sup / complémentaires" },
   { id: "hs25", label: "dont heures majorées à 25 %" },
   { id: "hs50", label: "dont heures majorées à 50 %" },
+  { id: "hc10", label: "Heures complémentaires à 10 %", hint: "Temps partiel" },
+  { id: "hc25", label: "Heures complémentaires à 25 %", hint: "Temps partiel" },
+  { id: "hBase", label: "Heures du salaire de base", hint: "Ex. 151,67 pour un temps plein" },
   { id: "taux", label: "Taux horaire brut (€)", hint: "Ce que tu gagnes par heure, avant cotisations" },
   { id: "base", label: "Salaire de base (€)" },
   { id: "brut", label: "Salaire brut (€)", hint: "Total avant cotisations" },
@@ -549,10 +553,48 @@ const FIELDS = [
   { id: "cout", label: "Coût total employeur (€)" },
 ];
 
+function inCumul(lines, i) {
+  const n = norm(lines[i]);
+  if (/cumul|annuel|depuis le 1er|de l'annee/.test(n)) return true;
+  return i > 0 && /^\s*(cumuls?|cumul annuel|cumuls annuels)\b/.test(norm(lines[i - 1]));
+}
 function findLine(lines, test) {
-  for (const l of lines) { const n = norm(l); if (test(n)) return l; }
+  for (let i = 0; i < lines.length; i++) { const n = norm(lines[i]); if (test(n) && !inCumul(lines, i)) return lines[i]; }
   return null;
 }
+
+/* Lignes d'heures supplémentaires / complémentaires, quel que soit le logiciel :
+   « Heures supplémentaires 25 % 17,33 16,875 292,44 », « HS 125% … », « Majoration HS 50 % … »,
+   « Heures complémentaires 10 % … ». */
+function parseHoursCell(s) { const m = String(s).match(/^(\d{1,3})[h:](\d{2})$/); return m ? +m[1] + +m[2] / 60 : null; }
+function extractHsItems(lines) {
+  const items = [];
+  lines.forEach((l, i) => {
+    const n = norm(l);
+    if (!/(heures?|hres?|\bh)\.?\s*(sup|supp|suppl|supplementaires?|compl|complementaires?)\b|\bh\.?s\.?\b|\bhs\d*\b|\bhc\d*\b|heures? majorees?|majoration|\bhsup\b/.test(n)) return;
+    if (/reduction|exoneration|deduction|cumul|dont heures|defisc|non soumis|plafond|contingent|repos compensateur/.test(n) || inCumul(lines, i)) return;
+    let rate = null, m;
+    if ((m = n.match(/(\d{2,3})(?:[.,]\d+)?\s*%/))) rate = +m[1];
+    else if ((m = n.match(/\b(?:hs|hc|h\.s\.)\s*(\d{2,3})\b|\ba\s*(\d{2,3})\b/))) rate = +(m[1] || m[2]);
+    if (rate == null) return;
+    if (rate >= 100) rate -= 100;
+    if (![10, 15, 20, 25, 50, 100].includes(rate) && !(rate > 0 && rate <= 100)) return;
+    const hm = l.match(/\b(\d{1,3}[h:]\d{2})\b/);
+    const clean = l.replace(/\d{2,3}(?:[.,]\d+)?\s*%/g, " ").replace(/\b(hs|hc)\s*\d{2,3}\b/gi, " ");
+    const ns = numbersIn(clean);
+    if (!ns.length) return;
+    let hours = hm ? parseHoursCell(hm[1]) : null;
+    if (hours == null && ns.length >= 2 && Math.abs(ns[0]) < 250) hours = Math.abs(ns[0]);
+    if (hours == null) return;
+    const amount = ns.length >= 2 ? ns[ns.length - 1] : null;
+    const unit = ns.length >= 3 ? ns[ns.length - 2] : (amount != null && hours ? amount / hours : null);
+    const compl = /compl|\bhc/.test(n);
+    const majOnly = /majoration/.test(n) && !/heures? sup|\bhs\b/.test(n.replace(/majoration\s*(hs|h\.s\.)/, ""));
+    items.push({ line: l, rate, hours: r2(hours), unit, amount, compl, majOnly });
+  });
+  return items;
+}
+
 function lastNum(line) { if (!line) return null; const ns = numbersIn(line); return ns.length ? ns[ns.length - 1] : null; }
 
 function extract(text) {
@@ -566,7 +608,7 @@ function extract(text) {
     const ns = numbersIn(baseL);
     if (ns.length >= 3) {
       const [a, b, c] = [ns[ns.length - 3], ns[ns.length - 2], ns[ns.length - 1]];
-      if (near(a * b, c, Math.max(0.1, c * 0.01))) { f.heures = a; f.taux = b; f.base = c; }
+      if (near(a * b, c, Math.max(0.1, c * 0.01))) { f.hBase = a; f.taux = b; f.base = c; }
       else f.base = c;
     } else if (ns.length) f.base = ns[ns.length - 1];
   }
@@ -581,11 +623,22 @@ function extract(text) {
     if (Math.round(rate) === 25) f.hs25 = r2((f.hs25 || 0) + h);
     else if (Math.round(rate) === 50) f.hs50 = r2((f.hs50 || 0) + h);
   }
+  // Lignes d'heures sup / complémentaires (bulletins classiques)
+  f._hsItems = extractHsItems(lines);
+  if (f.hs25 == null && f.hs50 == null && f._hsItems.length) {
+    for (const it of f._hsItems) {
+      if (it.majOnly && f._hsItems.some((o) => o !== it && !o.majOnly && o.rate === it.rate && near(o.hours, it.hours, 0.01))) continue; // même heures, ligne de majoration seule
+      const key = it.compl ? (it.rate <= 10 ? "hc10" : "hc25") : (it.rate >= 50 ? "hs50" : "hs25");
+      f[key] = r2((f[key] || 0) + it.hours);
+    }
+  }
   if (f.heures == null) {
-    const hL = findLine(lines, (n) => /(heures|horaire) (payees|travaillees|du mois|mensuel)|nombre d'heures|nb heures|total heures/.test(n));
+    const hL = findLine(lines, (n) => /(heures|horaire) (payees|travaillees|du mois|mensuel|reelles)|nombre d'heures|nb heures|total heures|heures remunerees/.test(n));
     const ns = hL ? numbersIn(hL).filter((x) => x > 0 && x < 300) : [];
     if (ns.length) f.heures = ns[0];
   }
+  if (f.heures == null && f.hBase != null) f._heuresFromBase = true;
+  if (f.heures == null && f.hBase != null) f.heures = r2(f.hBase + (f.hs25 || 0) + (f.hs50 || 0) + (f.hc10 || 0) + (f.hc25 || 0));
   if (f.taux == null) {
     const tL = findLine(lines, (n) => /taux horaire/.test(n));
     const ns = tL ? numbersIn(tL).filter((x) => x > 5 && x < 200) : [];
@@ -614,6 +667,9 @@ function extract(text) {
   if (!npL) npL = findLine(lines, (n) => /net (a|à) payer/.test(n) && !/avant/.test(n));
   f.netPaye = lastNum(npL);
 
+  f._absences = lines.filter((l, i) => /absence|entree\/sortie|entree sortie|retenue (pour )?(absence|maladie)|maladie|accident du travail|conges? sans solde|non remunere|jours? de carence|greve|mise a pied/.test(norm(l)) && !/cotisation|complementaire|prevoyance|indemnite|professionnelle|suppression|evolution|sante|totalite|complement/.test(norm(l)) && numbersIn(l).some((x) => x < 0) && !inCumul(lines, i));
+  f._absHours = r2(f._absences.reduce((a, l) => { const ns = numbersIn(l); return a + (ns.length >= 3 && Math.abs(ns[0]) < 250 && /\b(heures?|hres?|h)\b|\d,\d{2}\s+\d/.test(norm(l)) ? Math.abs(ns[0]) : 0); }, 0));
+  if (f._heuresFromBase && f._absHours) f.heures = r2(f.heures - f._absHours);
   f.cout = lastNum(findLine(lines, (n) => /total verse par l.employeur|cout (total|global|employeur|salarial total)|total employeur/.test(n)));
 
   const periode = (text.match(/p[ée]riode[^\n]*?du\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+au\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/i) || text.match(/du\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+au\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/i));
@@ -814,24 +870,69 @@ function expectedSalRate(v, P) {
   return s;
 }
 
+function hoursInfo(v) {
+  const h25 = v.hs25 || 0, h50 = v.hs50 || 0, c10 = v.hc10 || 0, c25 = v.hc25 || 0;
+  return { h25, h50, c10, c25, hs: h25 + h50, hc: c10 + c25, tot: h25 + h50 + c10 + c25,
+    majEq: h25 * 0.25 + h50 * 0.5 + c10 * 0.1 + c25 * 0.25, payEq: h25 * 1.25 + h50 * 1.5 + c10 * 1.1 + c25 * 1.25 };
+}
 function checkCalculs(v, P) {
   const out = [];
   const has = (k) => v[k] != null && !isNaN(v[k]);
   const ns0 = has("nonSoumis") ? v.nonSoumis : 0;
-  const h25 = has("hs25") ? v.hs25 : 0, h50 = has("hs50") ? v.hs50 : 0, hsTot = h25 + h50;
+  const HI = hoursInfo(v), h25 = HI.h25, h50 = HI.h50, hsTot = HI.tot;
   const fr = (h) => h.toLocaleString("fr-FR", { maximumFractionDigits: 2 });
 
-  if (has("heures") && has("taux") && has("base")) {
-    const e = r2(v.heures * v.taux);
+  const hB = has("hBase") ? v.hBase : (has("heures") && !hsTot ? v.heures : null);
+  if (hB != null && has("taux") && has("base")) {
+    const e = r2(hB * v.taux);
     out.push(near(e, v.base, 0.05)
-      ? { s: "ok", t: "Salaire de base = heures × taux horaire", d: fr(v.heures) + " h × " + eur(v.taux) + " = <b>" + eur(e) + "</b>, comme sur ta fiche." }
-      : { s: "bad", t: "Salaire de base ≠ heures × taux horaire", d: fr(v.heures) + " h × " + eur(v.taux) + " = <b>" + eur(e) + "</b>, mais ta fiche indique " + eur(v.base) + " (écart " + eur(v.base - e) + ")." });
+      ? { s: "ok", t: "Salaire de base = heures × taux horaire", d: fr(hB) + " h × " + eur(v.taux) + " = <b>" + eur(e) + "</b>, comme sur ta fiche." }
+      : { s: "bad", t: "Salaire de base ≠ heures × taux horaire", d: fr(hB) + " h × " + eur(v.taux) + " = <b>" + eur(e) + "</b>, mais ta fiche indique " + eur(v.base) + " (écart " + eur(v.base - e) + ")." });
+  }
+
+  // Chaque ligne d'heures sup / complémentaires : heures × taux majoré = montant
+  for (const it of (STATE.meta.hsItems || [])) {
+    const kind = it.compl ? "Heures complémentaires" : "Heures sup";
+    const base = has("taux") ? v.taux : null;
+    const mult = it.majOnly ? it.rate / 100 : 1 + it.rate / 100;
+    const parts = [];
+    let s = "ok";
+    if (it.amount != null && it.unit != null && Math.abs(it.hours * it.unit - it.amount) > Math.max(0.06, Math.abs(it.amount) * 0.005)) {
+      s = "bad"; parts.push(fr(it.hours) + " h × " + eur(it.unit) + " = " + eur(r2(it.hours * it.unit)) + ", mais la ligne affiche " + eur(it.amount) + ".");
+    }
+    if (base && it.unit != null) {
+      const exp = r2(base * mult);
+      if (Math.abs(it.unit - exp) > 0.011 + exp * 0.002) {
+        if (it.unit < exp) s = "bad";
+        else if (s === "ok") s = "info";
+        parts.push("Taux appliqué " + eur(it.unit) + " par heure, attendu " + eur(base) + " × " + String(mult).replace(".", ",") + " = <b>" + eur(exp) + "</b>" + (it.unit < exp ? " : manque ≈ " + eur(r2((exp - it.unit) * it.hours)) + "." : "."));
+      } else parts.push(fr(it.hours) + " h × " + eur(it.unit) + " (" + eur(base) + " majoré de " + it.rate + " %) = " + eur(it.amount) + " ✓");
+    } else if (it.amount != null) parts.push(fr(it.hours) + " h pour " + eur(it.amount) + (it.hours ? " (soit " + eur(it.amount / it.hours) + " de l'heure)" : "") + ".");
+    if (!it.compl && it.rate < 25 && !it.majOnly) { if (s === "ok") s = "warn"; parts.push("Majoration de " + it.rate + " % : en dessous de 25 %, c'est légal seulement si un accord d'entreprise ou de branche le prévoit (jamais moins de 10 %)."); }
+    if (it.compl && it.rate < 10) { s = "bad"; parts.push("Les heures complémentaires doivent être majorées d'au moins 10 %."); }
+    out.push({ s, t: kind + " à " + it.rate + " %", d: parts.join(" "), src: it.line });
+  }
+
+  // Absences retenues sur le salaire
+  for (const l of (STATE.meta.absences || [])) {
+    const ns = numbersIn(l), amt = ns[ns.length - 1];
+    const h = ns.length >= 3 ? Math.abs(ns[0]) : null, u = ns.length >= 3 ? ns[ns.length - 2] : null;
+    let d = "Retenue de " + eur(Math.abs(amt)) + " sur ton salaire. Vérifie les dates et le nombre d'heures ou de jours.";
+    let s = "info";
+    if (h != null && u != null && has("taux") && h < 250) {
+      const e = r2(h * v.taux);
+      if (Math.abs(Math.abs(amt) - e) > 0.1 && Math.abs(Math.abs(amt) - h * u) > 0.1) { s = "warn"; d += " " + fr(h) + " h × " + eur(v.taux) + " = " + eur(e) + " : la retenue ne correspond pas."; }
+      else if (Math.abs(u) > v.taux + 0.01 && Math.abs(Math.abs(amt) - e) > 0.1) { s = "warn"; d += " Taux de retenue (" + eur(Math.abs(u)) + ") plus élevé que ton taux horaire (" + eur(v.taux) + ")."; }
+      else d += " " + fr(h) + " h retenues au taux de " + eur(Math.abs(u)) + ".";
+    }
+    if (/maladie|accident/.test(norm(l))) d += " En arrêt maladie, l'employeur doit souvent compléter les indemnités de la Sécu (maintien de salaire, selon ton ancienneté et ta convention) : vérifie qu'une ligne d'indemnisation apparaît.";
+    out.push({ s, t: "Absence", d, src: l });
   }
 
   // Taux horaire : lu, ou estimé à partir du brut et des heures (majorations comprises)
-  let tx = has("taux") ? v.taux : (has("heures") && v.heures > 0 && has("base") && !hsTot ? v.base / v.heures : null);
+  let tx = has("taux") ? v.taux : (hB != null && hB > 0 && has("base") ? v.base / hB : null);
   let estimated = false;
-  if (tx == null && has("brut") && has("heures") && v.heures > 0) { tx = v.brut / (v.heures + h25 * 0.25 + h50 * 0.5); estimated = true; }
+  if (tx == null && has("brut") && has("heures") && v.heures > 0) { tx = v.brut / (v.heures + HI.majEq); estimated = true; }
   if (tx != null) {
     const lbl = estimated ? "Ton taux horaire estimé (brut ÷ heures, majorations comprises, primes éventuelles incluses) est d'environ " : "Ton taux horaire (";
     out.push(tx + 0.005 >= P.smic
@@ -839,20 +940,19 @@ function checkCalculs(v, P) {
       : { s: "bad", t: "En dessous du SMIC", d: lbl + eur(tx) + (estimated ? "" : ")") + ", en dessous du SMIC 2026 (" + eur(P.smic) + "). Sauf cas particulier (apprenti, moins de 18 ans), c'est interdit." });
   }
 
-  if (has("heures")) {
-    const h = v.heures;
-    let d;
-    if (near(h, 151.67, 0.01)) d = "151,67 h = 35 h par semaine × 52 semaines ÷ 12 mois. Tu es à temps plein, payé pareil chaque mois.";
-    else if (h < 151.67) d = fr(h) + " h payées : temps partiel (≈ " + (h * 12 / 52).toFixed(1).replace(".", ",") + " h par semaine). Les heures en plus de ton contrat sont des heures complémentaires, majorées d'au moins 10 %.";
-    else {
-      d = fr(h) + " h payées, soit " + fr(r2(h - 151.67)) + " h de plus qu'un temps plein (151,67 h).";
-      if (hsTot) {
-        const rest = r2(h - 151.67 - hsTot);
-        d += " La fiche indique " + fr(hsTot) + " h majorées (" + (h25 ? fr(h25) + " h à 25 %" : "") + (h25 && h50 ? " et " : "") + (h50 ? fr(h50) + " h à 50 %" : "") + ").";
-        if (rest > 0.2) d += " Il reste <b>" + fr(rest) + " h</b> au-delà de 151,67 h qui ne sont pas indiquées comme majorées : demande à quoi elles correspondent (heures d'équivalence, temps de pause payé, régularisation…).";
-      } else d += " Ces heures en plus devraient apparaître comme heures supplémentaires majorées (25 % puis 50 %).";
-    }
-    out.push({ s: h > 151.67 && hsTot && (h - 151.67 - hsTot) > 0.2 ? "warn" : "info", t: "Durée du travail", d });
+  if (has("heures") || hB != null) {
+    const h = has("heures") ? v.heures : hB + hsTot;
+    const base = hB != null ? hB : (h - hsTot > 151.67 ? 151.67 : r2(h - hsTot));
+    let d, st = "info";
+    if (near(base, 151.67, 0.02)) d = "Base de 151,67 h = 35 h par semaine × 52 semaines ÷ 12 mois : temps plein, payé pareil chaque mois.";
+    else if (base < 151.6) d = "Base de " + fr(base) + " h : temps partiel (≈ " + (base * 12 / 52).toFixed(1).replace(".", ",") + " h par semaine). Les heures au-delà de ton contrat sont des heures complémentaires : +10 % jusqu'à un dixième de ton contrat, +25 % au-delà.";
+    else d = "Base de " + fr(base) + " h, plus qu'un temps plein (151,67 h) : les heures au-delà de 35 h par semaine doivent être payées en heures sup majorées.";
+    if (hsTot) {
+      d += " Heures majorées sur la fiche : " + [HI.h25 && fr(HI.h25) + " h à 25 %", HI.h50 && fr(HI.h50) + " h à 50 %", HI.c10 && fr(HI.c10) + " h complémentaires à 10 %", HI.c25 && fr(HI.c25) + " h complémentaires à 25 %"].filter(Boolean).join(", ") + ". Total payé : " + fr(h) + " h.";
+      const rest = r2(h - base - hsTot);
+      if (rest > 0.2) { st = "warn"; d += " Il reste <b>" + fr(rest) + " h</b> payées qui ne sont ni dans la base ni majorées : demande à quoi elles correspondent (heures d'équivalence, temps de pause payé, régularisation…)."; }
+    } else if (h > 151.7) { st = "warn"; d += " " + fr(h) + " h payées mais aucune heure majorée trouvée : les heures au-delà de 151,67 h devraient apparaître en heures sup (+25 % puis +50 %)."; }
+    out.push({ s: st, t: "Durée du travail", d });
   }
 
   if (has("brut") && has("totalSal") && has("netAvant")) {
@@ -879,13 +979,13 @@ function checkCalculs(v, P) {
   // Heures supplémentaires : réduction de cotisations + exonération d'impôt
   if (hsTot > 0 && has("brut")) {
     const hasRed = hsReductionPresent(STATE.text);
-    const T = v.brut / ((has("heures") ? v.heures : 151.67 + hsTot) + h25 * 0.25 + h50 * 0.5);
-    const hsPay = r2(T * (h25 * 1.25 + h50 * 1.5));
+    const T = v.brut / ((has("heures") ? v.heures : 151.67 + hsTot) + HI.majEq);
+    const hsPay = r2(T * HI.payEq);
     const gainNet = r2(hsPay * 0.1131);
     if (!hasRed) {
       out.push({ s: "bad", t: "Heures sup : réduction de cotisations salariales absente", d: "Ta fiche indique " + fr(hsTot) + " h majorées, mais aucune ligne « réduction de cotisations salariales heures supplémentaires » n'apparaît. Cette réduction (≈ 11,31 % de la rémunération des heures sup, estimée ici à ≈ " + eur(hsPay) + ") <b>n'a pas de plafond annuel</b> : elle reste due même après les 7 500 € d'exonération d'impôt. Manque estimé : ≈ <b>" + eur(gainNet) + " de net ce mois-ci</b>. Compare avec tes fiches précédentes : si la ligne y figurait, son absence ce mois-ci est une erreur de déclaration." });
     } else out.push({ s: "ok", t: "Heures sup : réduction de cotisations présente", d: "Une ligne de réduction de cotisations sur les heures supplémentaires apparaît sur la fiche." });
-    out.push({ s: "info", t: "Heures en heures/minutes", d: "Sur la fiche, les heures peuvent être écrites en heures et minutes (200h10) ou en centièmes (200,17 h) : la loi n'impose pas de format. Le piège est le calcul : 10 min = 0,17 h et non 0,10 h, 15 min = 0,25 h. Ici l'outil convertit : " + fr(v.heures || 0) + " h dont " + fr(h25) + " h à 25 % et " + fr(h50) + " h à 50 %. Comme la fiche ne donne ni le taux horaire ni le montant de chaque type d'heures, tu ne peux pas vérifier que la conversion a été bien faite : demande le détail." });
+    if (/\d{1,3}\s*h\s*\d{2}\s*(min)?/i.test(STATE.text) && !(STATE.meta.hsItems || []).length) out.push({ s: "info", t: "Heures en heures/minutes", d: "Sur la fiche, les heures peuvent être écrites en heures et minutes (200h10) ou en centièmes (200,17 h) : la loi n'impose pas de format. Le piège est le calcul : 10 min = 0,17 h et non 0,10 h, 15 min = 0,25 h. Ici l'outil convertit : " + fr(v.heures || 0) + " h dont " + fr(h25) + " h à 25 % et " + fr(h50) + " h à 50 %. Comme la fiche ne donne ni le taux horaire ni le montant de chaque type d'heures, tu ne peux pas vérifier que la conversion a été bien faite : demande le détail." });
   }
 
   if (has("netImpo") && has("tauxPas") && has("pas")) {
@@ -1126,7 +1226,7 @@ function selectDoc(i) {
   STATE.found = {}; FIELDS.forEach((fd) => STATE.found[fd.id] = d.f[fd.id] ?? null);
   FIELDS.forEach((fd) => { const v = d.values[fd.id]; $("f-" + fd.id).value = v != null ? String(v).replace(".", ",") : ""; });
   $("f-cadre").checked = d.flags.cadre; $("f-alsace").checked = d.flags.alsace; $("f-plafondHS").checked = d.flags.plafondHS;
-  STATE.meta = { impoFromPas: !!d.f._impoFromPas };
+  STATE.meta = { impoFromPas: !!d.f._impoFromPas, hsItems: d.f._hsItems || [], absences: d.f._absences || [] };
   $("periode-lue").textContent = d.f._periode || d.label;
   $("raw").textContent = d.text;
   renderLines(d.lines);
@@ -1189,6 +1289,7 @@ function checkIndem(d, v) {
 /* Heures déclarées semaine par semaine                                */
 /* ------------------------------------------------------------------ */
 STATE.weekMode = store.get("weekMode", "week");
+STATE.contrat = store.get("contrat", 35);
 function parseHours(str) {
   const s = String(str || "").trim().toLowerCase().replace(/\s+/g, "");
   if (!s) return null;
@@ -1202,7 +1303,8 @@ function computeWeeks(d) {
   const hrs = weeksOf(d).map(parseHours);
   const filled = hrs.map((h, i) => ({ h, i })).filter((x) => x.h != null);
   if (!filled.length) return null;
-  const res = { worked: 0, h25: 0, h50: 0, n: filled.length, low: [], detail: [] };
+  const C = Math.min(35, Math.max(1, STATE.contrat || 35));
+  const res = { worked: 0, h25: 0, h50: 0, c10: 0, c25: 0, n: filled.length, low: [], detail: [], C };
   const groups = [];
   if (STATE.weekMode === "two") { for (let i = 0; i < filled.length; i += 2) groups.push(filled.slice(i, i + 2)); }
   else filled.forEach((x) => groups.push([x]));
@@ -1211,13 +1313,17 @@ function computeWeeks(d) {
     const base = 35 * g.length, band = 8 * g.length;
     const hs = Math.max(0, tot - base);
     const a = Math.min(hs, band), b = Math.max(0, hs - band);
-    res.h25 += a; res.h50 += b; res.worked += tot;
-    res.detail.push({ label: g.map((x) => "S" + (x.i + 1)).join("+"), tot, a, b });
-    g.forEach((x) => { if (x.h < 35) res.low.push(x.i + 1); });
+    let c1 = 0, c2 = 0;
+    if (C < 35) { const comp = Math.max(0, Math.min(tot, base) - C * g.length); c1 = Math.min(comp, C * 0.1 * g.length); c2 = comp - c1; }
+    res.h25 += a; res.h50 += b; res.c10 += c1; res.c25 += c2; res.worked += tot;
+    res.detail.push({ label: g.map((x) => "S" + (x.i + 1)).join("+"), tot, a, b, c1, c2 });
+    g.forEach((x) => { if (x.h < C) res.low.push(x.i + 1); });
   }
-  ["worked", "h25", "h50"].forEach((k) => res[k] = r2(res[k]));
+  ["worked", "h25", "h50", "c10", "c25"].forEach((k) => res[k] = r2(res[k]));
   res.hs = r2(res.h25 + res.h50);
-  res.expectedPaid = r2(151.67 + res.hs);
+  res.hc = r2(res.c10 + res.c25);
+  res.baseM = C >= 35 ? 151.67 : r2(C * 52 / 12);
+  res.expectedPaid = r2(res.baseM + res.hc + res.hs);
   return res;
 }
 function renderWeeksForm() {
@@ -1225,15 +1331,24 @@ function renderWeeksForm() {
   $("weeks").innerHTML = w.map((val, i) => `<div class="field week"><label for="w-${i}">Semaine ${i + 1}</label><input id="w-${i}" inputmode="decimal" autocomplete="off" placeholder="ex. 47h30" value="${esc(val)}"></div>`).join("");
   w.forEach((_, i) => $("w-" + i).addEventListener("input", (e) => { weeksOf(curDoc())[i] = e.target.value; recompute(); }));
   $("week-mode").value = STATE.weekMode;
+  $("week-contrat").value = String(STATE.contrat).replace(".", ",");
   $("week-del").disabled = w.length <= 1;
 }
 function checkWeeks(d, v) {
   const fr = (h) => (h ?? 0).toLocaleString("fr-FR", { maximumFractionDigits: 2 });
   const W = computeWeeks(d);
   const out = [];
-  $("weeks-sum").textContent = W ? "Total : " + fr(W.worked) + " h travaillées · " + fr(W.h25) + " h sup à 25 % · " + fr(W.h50) + " h sup à 50 %" : "";
+  $("weeks-sum").textContent = W ? "Total : " + fr(W.worked) + " h travaillées" + (W.hc ? " · " + fr(W.c10) + " h compl. à 10 % · " + fr(W.c25) + " h compl. à 25 %" : "") + " · " + fr(W.h25) + " h sup à 25 % · " + fr(W.h50) + " h sup à 50 %" : "";
   if (!W) { out.push({ s: "info", t: "Note tes heures de chaque semaine", d: "Par exemple 50, 42, 38, 47 (ou « 47h30 »). L'outil calcule les heures sup que tu aurais dû être payé et les compare avec la fiche." }); return out; }
-  out.push({ s: "info", t: "Ce que tu as noté", d: W.detail.map((x) => x.label + " : " + fr(x.tot) + " h" + (x.a || x.b ? " → " + (x.a ? fr(x.a) + " h à 25 %" : "") + (x.a && x.b ? " + " : "") + (x.b ? fr(x.b) + " h à 50 %" : "") : "")).join(" · ") + ". Heures sup dues : <b>" + fr(W.hs) + " h</b>. Avec la mensualisation, ta paie devrait compter <b>151,67 h + " + fr(W.hs) + " h = " + fr(W.expectedPaid) + " h</b>." });
+  const tag = (x) => [x.c1 && fr(x.c1) + " h compl. à 10 %", x.c2 && fr(x.c2) + " h compl. à 25 %", x.a && fr(x.a) + " h sup à 25 %", x.b && fr(x.b) + " h sup à 50 %"].filter(Boolean).join(" + ");
+  out.push({ s: "info", t: "Ce que tu as noté", d: W.detail.map((x) => x.label + " : " + fr(x.tot) + " h" + (tag(x) ? " → " + tag(x) : "")).join(" · ") + ". " + (W.hc ? "Heures complémentaires dues : <b>" + fr(W.hc) + " h</b>. " : "") + "Heures sup dues : <b>" + fr(W.hs) + " h</b>. Avec la mensualisation, ta paie devrait compter <b>" + fr(W.baseM) + " h" + (W.hc ? " + " + fr(W.hc) + " h" : "") + " + " + fr(W.hs) + " h = " + fr(W.expectedPaid) + " h</b>." });
+  if (W.hc) {
+    const pc10 = v.hc10 || 0, pc25 = v.hc25 || 0, missC = r2(W.hc - pc10 - pc25);
+    if (missC > 0.1) out.push({ s: "bad", t: "Il manque " + fr(missC) + " h complémentaires sur la fiche", d: "Selon tes heures : " + fr(W.c10) + " h à 10 % et " + fr(W.c25) + " h à 25 %. La fiche paie " + fr(pc10) + " h à 10 % et " + fr(pc25) + " h à 25 %." });
+    else if (missC < -0.1) out.push({ s: "info", t: "La fiche paie " + fr(-missC) + " h complémentaires de plus que ton décompte", d: "Ton décompte : " + fr(W.hc) + " h ; la fiche : " + fr(r2(pc10 + pc25)) + " h. Vérifie qu'il ne manque pas une semaine dans ta saisie." });
+    else if (W.c25 - pc25 > 0.1) out.push({ s: "bad", t: "Heures complémentaires mal majorées", d: fr(r2(W.c25 - pc25)) + " h devraient être majorées à 25 % (au-delà d'un dixième de ton contrat)." });
+    else out.push({ s: "ok", t: "Heures complémentaires justes", d: fr(W.hc) + " h selon toi, " + fr(r2(pc10 + pc25)) + " h sur la fiche." });
+  }
   const h25 = v.hs25 || 0, h50 = v.hs50 || 0, paidHS = h25 + h50;
   const T = v.taux || (v.brut && v.heures ? v.brut / (v.heures + h25 * 0.25 + h50 * 0.5) : null);
   const money = (a, b) => T ? r2(T * (a * 1.25 + b * 1.5)) : null;
@@ -1252,13 +1367,16 @@ function checkWeeks(d, v) {
     const diff = r2(W.h50 - h50);
     out.push({ s: diff > 0 ? "bad" : "info", t: "Mauvaise répartition 25 % / 50 %", d: "Le total d'heures sup est juste, mais " + (diff > 0 ? fr(diff) + " h devraient être majorées à 50 % au lieu de 25 %" + (T ? " : manque ≈ <b>" + eur(r2(diff * T * 0.25)) + " brut</b>." : ".") : "la fiche met plus d'heures à 50 % que ton décompte (à ton avantage).") + " Au-delà de 43 h dans une semaine, c'est +50 % (sauf accord prévoyant autre chose, jamais moins de +10 %)." });
   }
+  const absH = curDoc() && curDoc().f._absHours || 0;
+  if (absH) { W.expectedPaid = r2(W.expectedPaid - absH); out.push({ s: "info", t: "Absence prise en compte : " + fr(absH) + " h", d: "La fiche retient " + fr(absH) + " h d'absence : elles sont déduites des heures attendues. Vérifie que ces heures correspondent bien à une absence réelle." }); }
   if (v.heures != null) {
     const dh = r2(v.heures - W.expectedPaid);
-    if (dh < -0.1) out.push({ s: "bad", t: "Heures payées inférieures à tes heures", d: "La fiche paie " + fr(v.heures) + " h, ton décompte donne " + fr(W.expectedPaid) + " h (151,67 h + " + fr(W.hs) + " h sup). Il manque <b>" + fr(-dh) + " h</b>" + (T ? ", soit ≈ " + eur(r2(-dh * T)) + " brut au minimum." : ".") });
+    if (W.C >= 35 && v.hBase != null && v.hBase < 151.6) out.push({ s: "info", t: "Ta fiche indique un temps partiel", d: "Base de " + fr(v.hBase) + " h. Indique la durée de ton contrat par semaine dans « Contrat (h/semaine) » pour un calcul juste des heures complémentaires." });
+    if (dh < -0.1) out.push({ s: "bad", t: "Heures payées inférieures à tes heures", d: "La fiche paie " + fr(v.heures) + " h, ton décompte donne " + fr(W.expectedPaid) + " h (" + fr(W.baseM) + " h" + (W.hc ? " + " + fr(W.hc) + " h compl." : "") + " + " + fr(W.hs) + " h sup). Il manque <b>" + fr(-dh) + " h</b>" + (T ? ", soit ≈ " + eur(r2(-dh * T)) + " brut au minimum." : ".") });
     else if (dh > 0.1) out.push({ s: "info", t: "La fiche paie " + fr(dh) + " h de plus que ton décompte", d: "Fiche : " + fr(v.heures) + " h ; ton décompte : " + fr(W.expectedPaid) + " h. Ça peut venir d'un jour férié, d'heures d'équivalence, de temps de pause payé ou d'une régularisation : demande ce que c'est." });
     else out.push({ s: "ok", t: "Total d'heures payées juste", d: fr(v.heures) + " h payées pour " + fr(W.expectedPaid) + " h dues." });
   }
-  if (W.low.length) out.push({ s: "info", t: "Semaine(s) sous 35 h : " + W.low.map((i) => "S" + i).join(", "), d: "Avec la mensualisation, une semaine plus courte ne baisse pas ton salaire, sauf absence (congé, maladie, absence non payée), qui doit alors apparaître sur la fiche. En décompte à la semaine, elle ne compense pas les heures sup des autres semaines." });
+  if (W.low.length) out.push({ s: "info", t: "Semaine(s) sous " + fr(W.C) + " h : " + W.low.map((i) => "S" + i).join(", "), d: "Avec la mensualisation, une semaine plus courte ne baisse pas ton salaire, sauf absence (congé, maladie, absence non payée), qui doit alors apparaître sur la fiche. En décompte à la semaine, elle ne compense pas les heures sup des autres semaines." });
   out.push({ s: "info", t: "Mode de calcul utilisé", d: (STATE.weekMode === "two" ? "Sur 2 semaines : heures sup au-delà de 70 h par période de 2 semaines (16 premières à 25 %). Ce mode n'est valable que si un accord collectif le prévoit." : "Règle générale du Code du travail : heures sup au-delà de 35 h par semaine (lundi-dimanche), les 8 premières à +25 %, ensuite +50 %.") + " Certains métiers ont un régime particulier (temps de travail calculé sur l'amplitude avec un coefficient, heures d'équivalence, décompte sur un cycle) : entre alors tes heures telles qu'elles doivent être comptées, et vérifie ce que prévoit ta convention collective." });
   return out;
 }
@@ -1267,13 +1385,13 @@ function checkWeeks(d, v) {
 /* Comparaison sur plusieurs mois                                      */
 /* ------------------------------------------------------------------ */
 function hsReductionPresent(text) {
-  return /reduction (de )?cotisations? salariales?|heures? sup[a-z.]*\s.*(exoner|reduc|deduc)|(exoneration|reduction|deduction).*heures? sup|loi tepa|\brcs\b/.test(norm(text));
+  return /reduction (de )?cotisations? salariales?|heures? (sup|compl)[a-z.]*\s.*(exoner|reduc|deduc)|(exoneration|reduction|deduction|exo\.?)\s.*(heures? (sup|compl)|\bhs\b|\bhc\b|h\.? ?sup)|loi tepa|\brcs\b|reduction salariale/.test(norm(text));
 }
 function hsEstimate(v) {
-  const h25 = v.hs25 || 0, h50 = v.hs50 || 0, hsTot = h25 + h50;
+  const HI = hoursInfo(v), hsTot = HI.tot;
   if (!hsTot || !(v.brut > 0)) return { hsTot, hsPay: 0, gainNet: 0 };
-  const T = v.brut / ((v.heures != null ? v.heures : 151.67 + hsTot) + h25 * 0.25 + h50 * 0.5);
-  const hsPay = r2(T * (h25 * 1.25 + h50 * 1.5));
+  const T = v.brut / ((v.heures != null ? v.heures : 151.67 + hsTot) + HI.majEq);
+  const hsPay = r2(T * HI.payEq);
   return { hsTot, hsPay, gainNet: r2(hsPay * 0.1131) };
 }
 function docMetrics(d, P) {
@@ -1441,7 +1559,7 @@ function buildDataBlock() {
     const indem = INDEM.filter((it) => d.counts[it.id]).map((it) => "- " + it.label + " : " + d.counts[it.id] + " × " + (STATE.units[it.id] != null ? eur(STATE.units[it.id]) : "montant non indiqué")).join("\n");
     const flags = [d.flags.cadre ? "cadre" : "non cadre", d.flags.alsace ? "Alsace-Moselle" : "", d.flags.plafondHS ? "le salarié indique avoir déjà dépassé le plafond de 7 500 € d'heures sup exonérées d'impôt cette année" : ""].filter(Boolean).join(" ; ");
     const W = computeWeeks(d);
-    const wk = W ? "Heures réellement travaillées notées par le salarié, semaine par semaine (" + (STATE.weekMode === "two" ? "décompte sur 2 semaines" : "décompte hebdomadaire") + ") : " + weeksOf(d).map((x, i) => "S" + (i + 1) + " = " + (x || "?")).join(", ") + " → " + W.worked + " h travaillées, heures sup dues " + W.h25 + " h à 25 % et " + W.h50 + " h à 50 %.\n" : "Le salarié n'a pas noté ses heures semaine par semaine pour ce mois.\n";
+    const wk = W ? "Heures réellement travaillées notées par le salarié, semaine par semaine (" + (STATE.weekMode === "two" ? "décompte sur 2 semaines" : "décompte hebdomadaire") + ", contrat de " + STATE.contrat + " h par semaine) : " + weeksOf(d).map((x, i) => "S" + (i + 1) + " = " + (x || "?")).join(", ") + " → " + W.worked + " h travaillées, heures sup dues " + W.h25 + " h à 25 % et " + W.h50 + " h à 50 %.\n" : "Le salarié n'a pas noté ses heures semaine par semaine pour ce mois.\n";
     return "=== FICHE : " + d.label + (d.example ? " (EXEMPLE FICTIF)" : "") + " ===\n" +
       "Texte extrait du PDF (anonymisé) :\n" + anonymize(d.text).slice(0, 14000) + "\n\n" +
       "Chiffres retenus (lus automatiquement puis éventuellement corrigés par le salarié) :\n" + vals + "\n" +
@@ -1579,7 +1697,7 @@ $("btn-clear").addEventListener("click", () => {
   if (AI.busy) AI.ctl?.abort();
   STATE.docs = []; AI.turns = []; AI.html = []; aiRender(); $("ai-ask").hidden = true;
   $("paste-area").value = ""; $("ai-question").value = ""; $("ai-preview").textContent = ""; $("report-fallback").value = ""; $("report-fallback").hidden = true;
-  STATE.units = {}; store.set("units", {}); STATE.weekMode = "week"; store.set("weekMode", "week");
+  STATE.units = {}; store.set("units", {}); STATE.weekMode = "week"; store.set("weekMode", "week"); STATE.contrat = 35; store.set("contrat", 35);
   analyse(EXAMPLE, "Tout est effacé de cette page (fiches, chiffres, analyses, montants des paniers). L'exemple fictif est affiché.", "example", "Exemple");
 });
 $("btn-copy").addEventListener("click", () => {
@@ -1589,6 +1707,7 @@ $("btn-copy").addEventListener("click", () => {
 });
 $("week-add").addEventListener("click", () => { weeksOf(curDoc()).push(""); renderWeeksForm(); $("w-" + (curDoc().weeks.length - 1)).focus(); recompute(); });
 $("week-del").addEventListener("click", () => { const w = weeksOf(curDoc()); if (w.length > 1) { w.pop(); renderWeeksForm(); recompute(); } });
+$("week-contrat").addEventListener("input", (e) => { const v = toNum(e.target.value || "35"); if (!isNaN(v) && v > 0) { STATE.contrat = v; store.set("contrat", v); recompute(); } });
 $("week-mode").addEventListener("change", (e) => { STATE.weekMode = e.target.value; store.set("weekMode", STATE.weekMode); recompute(); });
 setupAI();
 
