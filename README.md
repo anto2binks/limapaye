@@ -45,3 +45,7 @@ feabdf309770ed24bba31a5467836cdc8cf639c705af27d52b585b041bb8527b  vendor/pdf.wor
 `fichepaie.html` est la source ; `./build.sh` régénère `index.html`, `sw.js` et `dist/fiche-paie.html`.
 
 Les paramètres légaux (SMIC, PMSS) sont modifiables dans la page. Outil d'aide à la lecture, sans valeur juridique.
+
+## Licence
+
+© 2026 Antoine M.M – Tous droits réservés. Aucune réutilisation sans autorisation écrite de l'auteur : voir [LICENSE](LICENSE). Les composants tiers (pdf.js, Tesseract.js) restent sous leur propre licence Apache 2.0.

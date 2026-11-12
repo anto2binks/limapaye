@@ -1,4 +1,7 @@
 <title>Décodeur Fiche de Paie</title>
+<!-- © 2026 Antoine M.M – Tous droits réservés. Toute reproduction, copie, modification ou diffusion, totale ou partielle, sans autorisation écrite de l'auteur est interdite (voir LICENSE). -->
+<meta name="author" content="Antoine M.M">
+<meta name="copyright" content="© 2026 Antoine M.M – Tous droits réservés">
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="referrer" content="no-referrer">
 <style>
@@ -149,6 +152,8 @@ pre.raw { font: 12px/1.5 var(--font-num); background: var(--sunken); padding: 12
 .tabs button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 ol.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; max-width: 72ch; }
 .copied { font-size: 13px; color: var(--ok); }
+footer.legal { border-top: 1px solid var(--line); padding-top: 16px; font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+footer.legal strong { color: var(--fg); }
 .months { display: flex; flex-wrap: wrap; gap: 6px; }
 .months button { font: 600 13px/1 var(--font-body); padding: 8px 12px; }
 .months button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
@@ -358,6 +363,11 @@ table.multi td.n { font-family: var(--font-num); text-align: right; }
     </details>
     <p class="muted small">Outil d'aide à la lecture, sans valeur juridique. Les taux de certaines cotisations (accident du travail, mutuelle, prévoyance, versement mobilité…) dépendent de l'entreprise et ne peuvent pas être vérifiés ici.</p>
   </section>
+  <footer class="legal">
+    <span><strong>© 2026 Antoine M.M – Tous droits réservés.</strong></span>
+    <span>Toute reproduction, copie, modification ou diffusion de cette application, totale ou partielle, sans autorisation écrite de l'auteur est interdite.</span>
+    <span>Composants libres utilisés : pdf.js et Tesseract.js (licence Apache 2.0).</span>
+  </footer>
 </div>
 
 <script src="vendor/pdf.min.js"></script>

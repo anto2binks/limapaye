@@ -1,0 +1,24 @@
+Décodeur de fiche de paie
+Copyright © 2026 Antoine M.M
+Tous droits réservés.
+
+Ce logiciel (code source, interface, textes, icônes et documentation) est la
+propriété exclusive de son auteur et est protégé par le Code de la propriété
+intellectuelle.
+
+Aucune licence n'est accordée. Sauf autorisation écrite préalable de l'auteur,
+il est interdit de reproduire, copier, modifier, adapter, traduire, distribuer,
+publier, héberger, vendre, louer ou exploiter ce logiciel, en tout ou partie,
+par quelque moyen que ce soit.
+
+La consultation de ce dépôt ou l'utilisation de l'application à titre personnel
+ne confère aucun droit sur le logiciel.
+
+Composants tiers
+----------------
+Ce logiciel intègre des composants libres, distribués sous leur propre licence,
+qui ne sont pas couverts par la mention ci-dessus :
+- pdf.js 3.11.174 (Mozilla) — Apache License 2.0 — vendor/PDFJS-LICENSE
+- Tesseract.js 5.1.1 et tesseract.js-core 5.1.1 — Apache License 2.0 —
+  vendor/ocr/TESSERACTJS-LICENSE.md, vendor/ocr/TESSERACT-CORE-LICENSE
+- Données de langue française Tesseract (@tesseract.js-data/fra) — Apache License 2.0
