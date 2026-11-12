@@ -1373,10 +1373,21 @@ function checkWeeks(d, v) {
   const W = computeWeeks(d);
   const out = [];
   weeksOf(d).forEach((x, i) => { const el = $("wc-" + i); if (el) { const h = parseHours(x); el.textContent = h != null ? "= " + fh(h) : ""; } });
-  $("weeks-sum").textContent = W ? "Total : " + fh(W.worked) + " travaillées" + (W.hc ? " · " + fh(W.c10) + " compl. à 10 % · " + fh(W.c25) + " compl. à 25 %" : "") + " · " + fh(W.h25) + " sup à 25 % · " + fh(W.h50) + " sup à 50 %" : "";
+  $("weeks-sum").textContent = W ? "Heures travaillées : " + fh(W.worked) + " · Heures à payer : " + fh(W.expectedPaid) + " (base " + fh(W.baseM) + (W.hc ? " + " + fh(W.hc) + " compl." : "") + " + " + fh(W.hs) + " sup : " + fh(W.h25) + " à 25 %, " + fh(W.h50) + " à 50 %)" : "";
   if (!W) { out.push({ s: "info", t: "Note tes heures de chaque semaine", d: "Par exemple 50, 42, 38, 47 (ou « 47h30 »). L'outil calcule les heures sup que tu aurais dû être payé et les compare avec la fiche." }); return out; }
   const tag = (x) => [x.c1 && fh(x.c1) + " compl. à 10 %", x.c2 && fh(x.c2) + " compl. à 25 %", x.a && fh(x.a) + " sup à 25 %", x.b && fh(x.b) + " sup à 50 %"].filter(Boolean).join(" + ");
-  out.push({ s: "info", t: "Ce que tu as noté", d: W.detail.map((x) => x.label + " : " + fh(x.tot) + "" + (tag(x) ? " → " + tag(x) : "")).join(" · ") + ". " + (W.hc ? "Heures complémentaires dues : <b>" + fh(W.hc) + "</b>. " : "") + "Heures sup dues : <b>" + fh(W.hs) + "</b>. Avec la mensualisation, ta paie devrait compter <b>" + fh(W.baseM) + "" + (W.hc ? " + " + fh(W.hc) + "" : "") + " + " + fh(W.hs) + " = " + fh(W.expectedPaid) + "</b>." });
+  out.push({ s: "info", t: "Ce que tu as noté", d: W.detail.map((x) => x.label + " : " + fh(x.tot) + "" + (tag(x) ? " → " + tag(x) : "")).join(" · ") + "." });
+  {
+    const normal = r2(W.worked - W.hs - W.hc), gap = r2(W.baseM - normal);
+    out.push({ s: "info", t: "Heures travaillées " + hhmm(W.worked) + " ≠ heures à payer " + hhmm(W.expectedPaid) + " : c'est normal", d:
+      "<b>Heures travaillées</b> = la somme de tes semaines : " + fh(W.worked) + ".<br>" +
+      "<b>Heures à payer</b> = ta base mensualisée " + fh(W.baseM) + (W.hc ? " + " + fh(W.hc) + " complémentaires" : "") + " + tes " + fh(W.hs) + " sup = <b>" + fh(W.expectedPaid) + "</b>.<br>" +
+      "La base mensualisée paie toujours le même nombre d'heures chaque mois (" + fh(W.baseM) + " = " + String(W.C).replace(".", ",") + " h × 52 semaines ÷ 12), quel que soit le nombre de jours du mois. " +
+      "Ce mois-ci, tes heures normales (hors heures sup) font " + fh(normal) + (Math.abs(gap) < 0.02 ? ", exactement la base." : gap > 0
+        ? " : la base t'en paie " + fh(gap) + " de plus. C'est le lissage de la mensualisation, il s'équilibre sur l'année (les mois plus longs, tu en fais plus que la base)."
+        : " : tu as fait " + fh(-gap) + " de plus que la base sans qu'elles soient des heures sup (semaines sous " + String(W.C).replace(".", ",") + " h, ou mois long). C'est le lissage de la mensualisation.") +
+      " C'est le chiffre <b>à payer</b> qu'on compare avec ta fiche." });
+  }
   if (W.hc) {
     const pc10 = v.hc10 || 0, pc25 = v.hc25 || 0, missC = r2(W.hc - pc10 - pc25);
     if (missC > 0.1) out.push({ s: "bad", t: "Il manque " + fh(missC) + " complémentaires sur la fiche", d: "Selon tes heures : " + fh(W.c10) + " à 10 % et " + fh(W.c25) + " à 25 %. La fiche paie " + fh(pc10) + " à 10 % et " + fh(pc25) + " à 25 %." });
@@ -1410,6 +1421,11 @@ function checkWeeks(d, v) {
     if (dh < -0.1) out.push({ s: "bad", t: "Heures payées inférieures à tes heures", d: "La fiche paie " + fh(v.heures) + ", ton décompte donne " + fh(W.expectedPaid) + " (" + fh(W.baseM) + "" + (W.hc ? " + " + fh(W.hc) + " compl." : "") + " + " + fh(W.hs) + " sup). Il manque <b>" + fh(-dh) + "</b>" + (T ? ", soit ≈ " + eur(r2(-dh * T)) + " brut au minimum." : ".") });
     else if (dh > 0.1) out.push({ s: "info", t: "La fiche paie " + fh(dh) + " de plus que ton décompte", d: "Fiche : " + fh(v.heures) + " ; ton décompte : " + fh(W.expectedPaid) + ". Ça peut venir d'un jour férié, d'heures d'équivalence, de temps de pause payé ou d'une régularisation : demande ce que c'est." });
     else out.push({ s: "ok", t: "Total d'heures payées juste", d: fh(v.heures) + " payées pour " + fh(W.expectedPaid) + " dues." });
+  }
+  {
+    const w = weeksOf(d), idx = w.map((x, i) => ({ h: parseHours(x), i })).filter((x) => x.h != null);
+    const edge = idx.filter((x, k) => (k === 0 || k === idx.length - 1) && x.h < W.C * 0.6).map((x) => "S" + (x.i + 1) + " (" + hhmm(x.h) + ")");
+    if (edge.length) out.push({ s: "info", t: "Semaine coupée par le changement de mois : " + edge.join(", "), d: "Une semaine va du lundi au dimanche. Si elle est à cheval sur deux mois, ses heures sup sont en général calculées et payées avec le mois où elle se termine. Ici, ses heures comptent dans la base, et ses heures sup éventuelles apparaîtront sur l'autre fiche. Note la semaine complète dans le mois où elle se termine si c'est ainsi que ton employeur fait." });
   }
   if (W.low.length) out.push({ s: "info", t: "Semaine(s) sous " + fh(W.C) + " : " + W.low.map((i) => "S" + i).join(", "), d: "Avec la mensualisation, une semaine plus courte ne baisse pas ton salaire, sauf absence (congé, maladie, absence non payée), qui doit alors apparaître sur la fiche. En décompte à la semaine, elle ne compense pas les heures sup des autres semaines." });
   out.push({ s: "info", t: "Mode de calcul utilisé", d: (STATE.weekMode === "two" ? "Sur 2 semaines : heures sup au-delà de 70 h par période de 2 semaines (16 premières à 25 %). Ce mode n'est valable que si un accord collectif le prévoit." : "Règle générale du Code du travail : heures sup au-delà de 35 h par semaine (lundi-dimanche), les 8 premières à +25 %, ensuite +50 %.") + " Certains métiers ont un régime particulier (temps de travail calculé sur l'amplitude avec un coefficient, heures d'équivalence, décompte sur un cycle) : entre alors tes heures telles qu'elles doivent être comptées, et vérifie ce que prévoit ta convention collective." });
