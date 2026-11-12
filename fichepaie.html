@@ -156,7 +156,7 @@ ol.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column;
 .weeks { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px 12px; }
 .hint.conv { font-family: var(--font-num); color: var(--accent); min-height: 1em; }
 .weeks input { font: 16px var(--font-num); padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); width: 100%; }
-#week-mode { font: 14px var(--font-body); padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); }
+#week-entree, #week-mode { font: 14px var(--font-body); padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); }
 .indem { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px 12px; align-items: center; }
 .indem .h { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
 .indem input { font: 15px var(--font-num); padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); width: 100%; min-width: 0; }
@@ -244,6 +244,7 @@ table.multi td.n { font-family: var(--font-num); text-align: right; }
       <div class="btns">
         <button type="button" id="week-add">+ Ajouter une semaine</button>
         <button type="button" id="week-del">− Retirer la dernière</button>
+        <label class="field" for="week-entree" style="flex:0 1 190px"><span class="small"><b>Date d'embauche</b></span><input id="week-entree" type="date"></label>
         <label class="field" for="week-contrat" style="flex:0 1 170px"><span class="small"><b>Contrat (h/semaine)</b></span><input id="week-contrat" inputmode="decimal" value="35"></label>
         <label class="field" for="week-mode" style="flex:1 1 220px"><span class="small"><b>Décompte des heures sup</b></span>
           <select id="week-mode"><option value="week">Par semaine (règle générale)</option><option value="two">Sur 2 semaines (si un accord le prévoit)</option></select></label>
@@ -1317,7 +1318,55 @@ function parseHours(str) {
   const n = toNum(s.replace(/h$/, ""));
   return isNaN(n) ? null : n;
 }
-function weeksOf(d) { if (!d.weeks) d.weeks = ["", "", "", ""]; return d.weeks; }
+/* Calendrier du mois de paie : semaines civiles (lundi → dimanche), jours fériés, embauche */
+function parsePeriod(d) {
+  const m = (d.f._periode || "").match(/du (\d{1,2})\/(\d{1,2})\/(\d{2,4}) au (\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (!m) return null;
+  const Y = (y) => (+y < 100 ? 2000 + +y : +y);
+  return { from: new Date(Y(m[3]), m[2] - 1, +m[1]), to: new Date(Y(m[6]), m[5] - 1, +m[4]) };
+}
+function frenchHolidays(y) {
+  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31), day = ((h + l - 7 * m + 114) % 31) + 1;
+  const easter = new Date(y, month - 1, day);
+  const plus = (n) => { const x = new Date(easter); x.setDate(x.getDate() + n); return x; };
+  const list = [new Date(y, 0, 1), new Date(y, 4, 1), new Date(y, 4, 8), new Date(y, 6, 14), new Date(y, 7, 15), new Date(y, 10, 1), new Date(y, 10, 11), new Date(y, 11, 25), plus(1), plus(39), plus(50)];
+  return new Set(list.map((x) => x.toDateString()));
+}
+const dm = (x) => String(x.getDate()).padStart(2, "0") + "/" + String(x.getMonth() + 1).padStart(2, "0");
+function entryDate() { if (!STATE.entree) return null; const e = new Date(STATE.entree + "T00:00:00"); return isNaN(e) ? null : e; }
+function weekCalendar(d) {
+  const P = parsePeriod(d); if (!P) return null;
+  const e = entryDate();
+  const entry = e && e > P.from && e <= P.to ? e : null;
+  const from = entry || P.from;
+  const mon = new Date(from); mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
+  const weeks = [];
+  for (const w = new Date(mon); w <= P.to; w.setDate(w.getDate() + 7)) {
+    const sun = new Date(w); sun.setDate(sun.getDate() + 6);
+    weeks.push({ mon: new Date(w), sun, inFrom: w < from ? new Date(from) : new Date(w), inTo: sun > P.to ? new Date(P.to) : sun,
+      cutStart: w < from, byEntry: !!entry && w < entry && sun >= entry, cutEnd: sun > P.to });
+  }
+  return { P, entry, weeks };
+}
+/* Base mensualisée proratisée en cas d'embauche en cours de mois (méthode des heures réelles) */
+function prorata(d, C) {
+  const cal = weekCalendar(d); if (!cal || !cal.entry) return null;
+  const hol = frenchHolidays(cal.P.from.getFullYear());
+  const days = [];
+  for (const x = new Date(cal.P.from); x < cal.entry; x.setDate(x.getDate() + 1)) {
+    const wd = x.getDay(); if (wd >= 1 && wd <= 5 && !hol.has(x.toDateString())) days.push(dm(x));
+  }
+  return { entry: cal.entry, days, lostH: r2(days.length * C / 5) };
+}
+
+function weeksOf(d) {
+  const cal = weekCalendar(d);
+  const n = cal ? cal.weeks.length : 4;
+  if (!d.weeks || (d.weeks.every((x) => !String(x).trim()) && d.weeks.length !== n)) d.weeks = Array(n).fill("");
+  return d.weeks;
+}
 function computeWeeks(d) {
   const hrs = weeksOf(d).map(parseHours);
   const filled = hrs.map((h, i) => ({ h, i })).filter((x) => x.h != null);
@@ -1341,16 +1390,23 @@ function computeWeeks(d) {
   ["worked", "h25", "h50", "c10", "c25"].forEach((k) => res[k] = r2(res[k]));
   res.hs = r2(res.h25 + res.h50);
   res.hc = r2(res.c10 + res.c25);
-  res.baseM = C >= 35 ? 151.67 : r2(C * 52 / 12);
-  res.expectedPaid = r2(res.baseM + res.hc + res.hs);
+  res.baseFull = C >= 35 ? 151.67 : r2(C * 52 / 12);
+  res.prorata = prorata(d, C);
+  res.baseM = res.prorata ? r2(res.baseFull - res.prorata.lostH) : res.baseFull;
+  res.normal = r2(res.worked - res.hs - res.hc);
+  res.expectedPaid = r2((res.prorata ? Math.max(res.baseM, res.normal) : res.baseM) + res.hc + res.hs);
   return res;
 }
 function renderWeeksForm() {
   const d = curDoc(); const w = weeksOf(d);
-  $("weeks").innerHTML = w.map((val, i) => `<div class="field week"><label for="w-${i}">Semaine ${i + 1}</label><input id="w-${i}" inputmode="text" autocomplete="off" placeholder="47,50 ou 47h30" value="${esc(val)}"><span class="hint conv" id="wc-${i}"></span></div>`).join("");
+  const cal = weekCalendar(d);
+  const lab = (i) => { const k = cal && cal.weeks[i]; if (!k) return "Semaine " + (i + 1); return "Du " + dm(k.mon) + " au " + dm(k.sun); };
+  const sub = (i) => { const k = cal && cal.weeks[i]; if (!k || !(k.cutStart || k.cutEnd)) return ""; return `<span class="hint">${k.byEntry ? "Embauche le " + dm(k.inFrom) + " : " : ""}heures du ${dm(k.inFrom)} au ${dm(k.inTo)}${k.cutEnd ? " (la semaine finit le mois suivant)" : (k.cutStart && !k.byEntry ? " (la semaine a commencé le mois d'avant)" : "")}</span>`; };
+  $("weeks").innerHTML = w.map((val, i) => `<div class="field week"><label for="w-${i}">${lab(i)}</label>${sub(i)}<input id="w-${i}" inputmode="text" autocomplete="off" placeholder="47,50 ou 47h30" value="${esc(val)}"><span class="hint conv" id="wc-${i}"></span></div>`).join("");
   w.forEach((_, i) => $("w-" + i).addEventListener("input", (e) => { weeksOf(curDoc())[i] = e.target.value; recompute(); }));
   $("week-mode").value = STATE.weekMode;
   $("week-contrat").value = String(STATE.contrat).replace(".", ",");
+  $("week-entree").value = STATE.entree || "";
   $("week-del").disabled = w.length <= 1;
 }
 function checkWeeks(d, v) {
@@ -1358,16 +1414,24 @@ function checkWeeks(d, v) {
   const W = computeWeeks(d);
   const out = [];
   weeksOf(d).forEach((x, i) => { const el = $("wc-" + i); if (el) { const h = parseHours(x); el.textContent = h != null ? "= " + fh(h) : ""; } });
-  $("weeks-sum").textContent = W ? "Heures travaillées : " + fh(W.worked) + " · Heures à payer : " + fh(W.expectedPaid) + " (base " + fh(W.baseM) + (W.hc ? " + " + fh(W.hc) + " compl." : "") + " + " + fh(W.hs) + " sup : " + fh(W.h25) + " à 25 %, " + fh(W.h50) + " à 50 %)" : "";
+  $("weeks-sum").textContent = W ? "Heures travaillées : " + fh(W.worked) + " · Heures à payer : " + fh(W.expectedPaid) + " (" + (W.prorata && W.normal > W.baseM ? "heures normales " + fh(W.normal) : "base " + fh(W.baseM)) + (W.hc ? " + " + fh(W.hc) + " compl." : "") + " + " + fh(W.hs) + " sup : " + fh(W.h25) + " à 25 %, " + fh(W.h50) + " à 50 %)" : "";
   if (!W) { out.push({ s: "info", t: "Note tes heures de chaque semaine", d: "Par exemple 50, 42, 38, 47 (ou « 47h30 »). L'outil calcule les heures sup que tu aurais dû être payé et les compare avec la fiche." }); return out; }
   const tag = (x) => [x.c1 && fh(x.c1) + " compl. à 10 %", x.c2 && fh(x.c2) + " compl. à 25 %", x.a && fh(x.a) + " sup à 25 %", x.b && fh(x.b) + " sup à 50 %"].filter(Boolean).join(" + ");
+  const calN = weekCalendar(d);
+  if (calN) W.detail.forEach((x) => { x.label = x.label.replace(/S(\d+)/g, (_, n) => { const k = calN.weeks[+n - 1]; return k ? dm(k.inFrom) + "→" + dm(k.inTo) : "S" + n; }); });
   out.push({ s: "info", t: "Ce que tu as noté", d: W.detail.map((x) => x.label + " : " + fh(x.tot) + "" + (tag(x) ? " → " + tag(x) : "")).join(" · ") + "." });
   {
-    const normal = r2(W.worked - W.hs - W.hc), gap = r2(W.baseM - normal);
-    out.push({ s: "info", t: "Heures travaillées " + hhmm(W.worked) + " ≠ heures à payer " + hhmm(W.expectedPaid) + " : c'est normal", d:
+    const normal = W.normal, gap = r2(W.baseM - normal);
+    if (W.prorata) out.push({ s: normal > W.baseM + 0.1 ? "warn" : "info", t: "Mois d'embauche : heures à payer " + hhmm(W.expectedPaid), d:
+      "<b>Heures travaillées</b> : " + fh(W.worked) + ", dont " + fh(normal) + " d'heures normales et " + fh(W.hs) + " d'heures sup.<br>" +
+      "<b>Base proratisée</b> (méthode la plus courante) : " + fh(W.baseM) + " (détail ci-dessous).<br>" +
+      (normal > W.baseM + 0.1
+        ? "Tu as fait <b>" + fh(r2(normal - W.baseM)) + " d'heures normales de plus</b> que cette base (jour d'embauche plus long que prévu, jour férié travaillé, journées au-delà de ton planning…). Le mois d'embauche, il n'y a pas de lissage sur l'année : ces heures doivent être payées. L'appli compte donc tes heures réelles : <b>" + fh(normal) + " + " + fh(W.hs) + " sup = " + fh(W.expectedPaid) + "</b>. Demande à ton employeur comment il les a comptées."
+        : "Tes heures normales (" + fh(normal) + ") ne dépassent pas la base : heures à payer = " + fh(W.baseM) + " + " + fh(W.hs) + " sup = <b>" + fh(W.expectedPaid) + "</b>.") });
+    else out.push({ s: "info", t: "Heures travaillées " + hhmm(W.worked) + " ≠ heures à payer " + hhmm(W.expectedPaid) + " : c'est normal", d:
       "<b>Heures travaillées</b> = la somme de tes semaines : " + fh(W.worked) + ".<br>" +
       "<b>Heures à payer</b> = ta base mensualisée " + fh(W.baseM) + (W.hc ? " + " + fh(W.hc) + " complémentaires" : "") + " + tes " + fh(W.hs) + " sup = <b>" + fh(W.expectedPaid) + "</b>.<br>" +
-      "La base mensualisée paie toujours le même nombre d'heures chaque mois (" + fh(W.baseM) + " = " + String(W.C).replace(".", ",") + " h × 52 semaines ÷ 12), quel que soit le nombre de jours du mois. " +
+      "La base mensualisée paie toujours le même nombre d'heures chaque mois (" + fh(W.baseFull) + " = " + String(W.C).replace(".", ",") + " h × 52 semaines ÷ 12), quel que soit le nombre de jours du mois" + (W.prorata ? ", sauf le mois d'embauche où elle est réduite (voir ci-dessous)" : "") + ". " +
       "Ce mois-ci, tes heures normales (hors heures sup) font " + fh(normal) + (Math.abs(gap) < 0.02 ? ", exactement la base." : gap > 0
         ? " : la base t'en paie " + fh(gap) + " de plus. C'est le lissage de la mensualisation, il s'équilibre sur l'année (les mois plus longs, tu en fais plus que la base)."
         : " : tu as fait " + fh(-gap) + " de plus que la base sans qu'elles soient des heures sup (semaines sous " + String(W.C).replace(".", ",") + " h, ou mois long). C'est le lissage de la mensualisation.") +
@@ -1402,17 +1466,29 @@ function checkWeeks(d, v) {
   if (absH) { W.expectedPaid = r2(W.expectedPaid - absH); out.push({ s: "info", t: "Absence prise en compte : " + fh(absH) + "", d: "La fiche retient " + fh(absH) + " d'absence : elles sont déduites des heures attendues. Vérifie que ces heures correspondent bien à une absence réelle." }); }
   if (v.heures != null) {
     const dh = r2(v.heures - W.expectedPaid);
-    if (W.C >= 35 && v.hBase != null && v.hBase < 151.6) out.push({ s: "info", t: "Ta fiche indique un temps partiel", d: "Base de " + fh(v.hBase) + ". Indique la durée de ton contrat par semaine dans « Contrat (h/semaine) » pour un calcul juste des heures complémentaires." });
-    if (dh < -0.1) out.push({ s: "bad", t: "Heures payées inférieures à tes heures", d: "La fiche paie " + fh(v.heures) + ", ton décompte donne " + fh(W.expectedPaid) + " (" + fh(W.baseM) + "" + (W.hc ? " + " + fh(W.hc) + " compl." : "") + " + " + fh(W.hs) + " sup). Il manque <b>" + fh(-dh) + "</b>" + (T ? ", soit ≈ " + eur(r2(-dh * T)) + " brut au minimum." : ".") });
+    if (W.C >= 35 && v.hBase != null && v.hBase < 151.6 && !W.prorata) out.push({ s: "info", t: "Ta fiche indique un temps partiel", d: "Base de " + fh(v.hBase) + ". Indique la durée de ton contrat par semaine dans « Contrat (h/semaine) » pour un calcul juste des heures complémentaires." });
+    if (dh < -0.1) out.push({ s: "bad", t: "Heures payées inférieures à tes heures", d: "La fiche paie " + fh(v.heures) + ", ton décompte donne " + fh(W.expectedPaid) + " (" + fh(W.prorata ? Math.max(W.baseM, W.normal) : W.baseM) + "" + (W.hc ? " + " + fh(W.hc) + " compl." : "") + " + " + fh(W.hs) + " sup). Il manque <b>" + fh(-dh) + "</b>" + (T ? ", soit ≈ " + eur(r2(-dh * T)) + " brut au minimum." : ".") });
     else if (dh > 0.1) out.push({ s: "info", t: "La fiche paie " + fh(dh) + " de plus que ton décompte", d: "Fiche : " + fh(v.heures) + " ; ton décompte : " + fh(W.expectedPaid) + ". Ça peut venir d'un jour férié, d'heures d'équivalence, de temps de pause payé ou d'une régularisation : demande ce que c'est." });
     else out.push({ s: "ok", t: "Total d'heures payées juste", d: fh(v.heures) + " payées pour " + fh(W.expectedPaid) + " dues." });
   }
-  {
+  if (W.prorata) out.push({ s: "info", t: "Embauche le " + W.prorata.entry.toLocaleDateString("fr-FR") + " : base réduite à " + fh(W.baseM), d: "Le mois d'embauche, la base n'est pas de " + fh(W.baseFull) + " : on retire les jours ouvrés du mois avant ton arrivée (" + (W.prorata.days.join(", ") || "aucun") + "), soit " + W.prorata.days.length + " jour(s) × " + fh(W.C / 5) + " = " + fh(W.prorata.lostH) + ". Base attendue : <b>" + fh(W.baseM) + "</b>. Les jours fériés sont exclus. Selon la méthode de ton employeur (jours ouvrés, ouvrables, calendaires ou heures réelles), le résultat peut varier un peu : demande-lui laquelle il applique." });
+  const calW = weekCalendar(d);
+  if (calW) {
+    weeksOf(d).forEach((x, i) => {
+      const k = calW.weeks[i], h = parseHours(x); if (!k || h == null) return;
+      const lbl = "Semaine du " + dm(k.mon) + " au " + dm(k.sun);
+      if (k.byEntry) out.push({ s: "info", t: lbl + " : semaine d'embauche", d: "Tu as commencé le " + dm(k.inFrom) + ". Seules tes heures à partir de ce jour comptent ; les heures sup se calculent au-delà de " + fh(W.C) + " sur cette semaine." });
+      else if (k.cutStart) out.push({ s: "info", t: lbl + " : commencée le mois d'avant", d: "Les heures sup se calculent sur la semaine entière (lundi → dimanche). Note ici seulement les heures faites à partir du " + dm(k.inFrom) + " ; s'il y a des heures sup sur cette semaine, elles sont en général payées sur cette fiche-ci (le mois où la semaine se termine)." });
+      if (k.cutEnd) out.push({ s: "info", t: lbl + " : se termine le mois suivant", d: "Ta paie s'arrête au " + dm(k.inTo) + ". Note ici seulement les heures faites jusqu'au " + dm(k.inTo) + ". L'appli compte les heures sup déjà faites à cette date (au-delà de " + fh(W.C) + " depuis le lundi " + dm(k.mon) + "). Certains employeurs paient les heures sup de cette semaine sur la fiche du mois suivant : dans ce cas, l'écart doit se retrouver sur la fiche d'après. Si tu as aussi travaillé le " + dm(new Date(k.inTo.getFullYear(), k.inTo.getMonth(), k.inTo.getDate() + 1)) + " ou après, ces heures-là comptent pour le mois suivant." });
+    });
+  }
+  if (!calW) {
     const w = weeksOf(d), idx = w.map((x, i) => ({ h: parseHours(x), i })).filter((x) => x.h != null);
     const edge = idx.filter((x, k) => (k === 0 || k === idx.length - 1) && x.h < W.C * 0.6).map((x) => "S" + (x.i + 1) + " (" + hhmm(x.h) + ")");
     if (edge.length) out.push({ s: "info", t: "Semaine coupée par le changement de mois : " + edge.join(", "), d: "Une semaine va du lundi au dimanche. Si elle est à cheval sur deux mois, ses heures sup sont en général calculées et payées avec le mois où elle se termine. Ici, ses heures comptent dans la base, et ses heures sup éventuelles apparaîtront sur l'autre fiche. Note la semaine complète dans le mois où elle se termine si c'est ainsi que ton employeur fait." });
   }
-  if (W.low.length) out.push({ s: "info", t: "Semaine(s) sous " + fh(W.C) + " : " + W.low.map((i) => "S" + i).join(", "), d: "Avec la mensualisation, une semaine plus courte ne baisse pas ton salaire, sauf absence (congé, maladie, absence non payée), qui doit alors apparaître sur la fiche. En décompte à la semaine, elle ne compense pas les heures sup des autres semaines." });
+  if (calW) W.low = W.low.filter((n) => { const k = calW.weeks[n - 1]; return k && !k.cutStart && !k.cutEnd; });
+  if (W.low.length) out.push({ s: "info", t: "Semaine(s) sous " + fh(W.C) + " : " + W.low.map((i) => calW && calW.weeks[i - 1] ? "du " + dm(calW.weeks[i - 1].mon) : "S" + i).join(", "), d: "Avec la mensualisation, une semaine plus courte ne baisse pas ton salaire, sauf absence (congé, maladie, absence non payée), qui doit alors apparaître sur la fiche. En décompte à la semaine, elle ne compense pas les heures sup des autres semaines." });
   out.push({ s: "info", t: "Mode de calcul utilisé", d: (STATE.weekMode === "two" ? "Sur 2 semaines : heures sup au-delà de 70 h par période de 2 semaines (16 premières à 25 %). Ce mode n'est valable que si un accord collectif le prévoit." : "Règle générale du Code du travail : heures sup au-delà de 35 h par semaine (lundi-dimanche), les 8 premières à +25 %, ensuite +50 %.") + " Certains métiers ont un régime particulier (temps de travail calculé sur l'amplitude avec un coefficient, heures d'équivalence, décompte sur un cycle) : entre alors tes heures telles qu'elles doivent être comptées, et vérifie ce que prévoit ta convention collective." });
   return out;
 }
@@ -1906,7 +1982,9 @@ $("btn-copy").addEventListener("click", () => {
   try { navigator.clipboard.writeText(t).then(() => { $("copied").textContent = "Rapport copié."; }, fallback); } catch (e) { fallback(); }
 });
 $("cp-pris").addEventListener("input", (e) => { const v = toNum(e.target.value || ""); curDoc().cpPris = isNaN(v) ? null : v; recompute(); });
-$("cp-entree").addEventListener("change", (e) => { STATE.entree = e.target.value; store.set("entree", STATE.entree); recompute(); });
+const setEntree = (v) => { STATE.entree = v; store.set("entree", v); $("cp-entree").value = v; renderWeeksForm(); recompute(); };
+$("cp-entree").addEventListener("change", (e) => setEntree(e.target.value));
+$("week-entree").addEventListener("change", (e) => setEntree(e.target.value));
 $("week-add").addEventListener("click", () => { weeksOf(curDoc()).push(""); renderWeeksForm(); $("w-" + (curDoc().weeks.length - 1)).focus(); recompute(); });
 $("week-del").addEventListener("click", () => { const w = weeksOf(curDoc()); if (w.length > 1) { w.pop(); renderWeeksForm(); recompute(); } });
 $("week-contrat").addEventListener("input", (e) => { const v = parseHours(e.target.value || "35"); if (!isNaN(v) && v > 0) { STATE.contrat = v; store.set("contrat", v); recompute(); } });
