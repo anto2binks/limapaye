@@ -153,6 +153,9 @@ ol.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column;
 .months button { font: 600 13px/1 var(--font-body); padding: 8px 12px; }
 .months button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
 .months button .x { margin-left: 4px; opacity: .6; font-weight: 400; }
+.weeks { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px 12px; }
+.weeks input { font: 16px var(--font-num); padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); width: 100%; }
+#week-mode { font: 14px var(--font-body); padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); }
 .indem { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px 12px; align-items: center; }
 .indem .h { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
 .indem input { font: 15px var(--font-num); padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); width: 100%; min-width: 0; }
@@ -232,6 +235,22 @@ table.multi td.n { font-family: var(--font-num); text-align: right; }
     </div>
   </section>
 
+  <section class="section" aria-labelledby="h-semaines">
+    <div class="section-head"><h2 id="h-semaines">Tes heures, semaine par semaine</h2><div class="counts" id="count-sem"></div></div>
+    <p class="muted small">Note les heures que tu as réellement faites chaque semaine du mois (ton relevé, ton planning). L'outil calcule les heures sup qu'on aurait dû te payer et les compare avec la fiche.</p>
+    <div class="panel">
+      <div class="weeks" id="weeks"></div>
+      <div class="btns">
+        <button type="button" id="week-add">+ Ajouter une semaine</button>
+        <button type="button" id="week-del">− Retirer la dernière</button>
+        <label class="field" for="week-mode" style="flex:1 1 220px"><span class="small"><b>Décompte des heures sup</b></span>
+          <select id="week-mode"><option value="week">Par semaine (règle générale)</option><option value="two">Sur 2 semaines (si un accord le prévoit)</option></select></label>
+      </div>
+      <p class="num small" id="weeks-sum"></p>
+      <ul class="checks" id="checks-sem"></ul>
+    </div>
+  </section>
+
   <section class="section" aria-labelledby="h-indem">
     <div class="section-head"><h2 id="h-indem">Tes paniers et indemnités du mois</h2><div class="counts" id="count-indem"></div></div>
     <p class="muted small">Note combien de paniers (et autres indemnités) tu as eus ce mois-ci et leur montant unitaire (barème de ta convention collective). L'outil compare avec ce que la fiche t'a versé. Les montants unitaires sont retenus sur cet appareil pour les autres mois.</p>
@@ -245,7 +264,7 @@ table.multi td.n { font-family: var(--font-num); text-align: right; }
     <div class="section-head"><h2 id="h-multi">Sur plusieurs mois</h2><div class="counts" id="count-multi"></div></div>
     <div class="tablewrap">
       <table class="multi">
-        <thead><tr><th>Mois</th><th>Brut</th><th>Heures</th><th>dont maj.</th><th>Réduc. cotis. HS</th><th>HS défiscalisées ≈</th><th>Indemnités</th><th>Net social</th><th>Net payé</th></tr></thead>
+        <thead><tr><th>Mois</th><th>Brut</th><th>Heures</th><th>dont maj.</th><th>HS selon toi</th><th>Réduc. cotis. HS</th><th>HS défiscalisées ≈</th><th>Indemnités</th><th>Net social</th><th>Net payé</th></tr></thead>
         <tbody id="multi-rows"></tbody>
       </table>
     </div>
@@ -1105,6 +1124,7 @@ function selectDoc(i) {
   $("raw").textContent = d.text;
   renderLines(d.lines);
   renderIndemForm();
+  renderWeeksForm();
   renderMonths();
   recompute();
 }
@@ -1159,6 +1179,84 @@ function checkIndem(d, v) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Heures déclarées semaine par semaine                                */
+/* ------------------------------------------------------------------ */
+STATE.weekMode = store.get("weekMode", "week");
+function parseHours(str) {
+  const s = String(str || "").trim().toLowerCase().replace(/\s+/g, "");
+  if (!s) return null;
+  let m = s.match(/^(\d{1,3})(?:h|:)(\d{1,2})?(?:min|m)?$/);
+  if (m) return +m[1] + (m[2] ? +m[2] / 60 : 0);
+  const n = toNum(s.replace(/h$/, ""));
+  return isNaN(n) ? null : n;
+}
+function weeksOf(d) { if (!d.weeks) d.weeks = ["", "", "", ""]; return d.weeks; }
+function computeWeeks(d) {
+  const hrs = weeksOf(d).map(parseHours);
+  const filled = hrs.map((h, i) => ({ h, i })).filter((x) => x.h != null);
+  if (!filled.length) return null;
+  const res = { worked: 0, h25: 0, h50: 0, n: filled.length, low: [], detail: [] };
+  const groups = [];
+  if (STATE.weekMode === "two") { for (let i = 0; i < filled.length; i += 2) groups.push(filled.slice(i, i + 2)); }
+  else filled.forEach((x) => groups.push([x]));
+  for (const g of groups) {
+    const tot = g.reduce((a, x) => a + x.h, 0);
+    const base = 35 * g.length, band = 8 * g.length;
+    const hs = Math.max(0, tot - base);
+    const a = Math.min(hs, band), b = Math.max(0, hs - band);
+    res.h25 += a; res.h50 += b; res.worked += tot;
+    res.detail.push({ label: g.map((x) => "S" + (x.i + 1)).join("+"), tot, a, b });
+    g.forEach((x) => { if (x.h < 35) res.low.push(x.i + 1); });
+  }
+  ["worked", "h25", "h50"].forEach((k) => res[k] = r2(res[k]));
+  res.hs = r2(res.h25 + res.h50);
+  res.expectedPaid = r2(151.67 + res.hs);
+  return res;
+}
+function renderWeeksForm() {
+  const d = curDoc(); const w = weeksOf(d);
+  $("weeks").innerHTML = w.map((val, i) => `<div class="field week"><label for="w-${i}">Semaine ${i + 1}</label><input id="w-${i}" inputmode="decimal" autocomplete="off" placeholder="ex. 47h30" value="${esc(val)}"></div>`).join("");
+  w.forEach((_, i) => $("w-" + i).addEventListener("input", (e) => { weeksOf(curDoc())[i] = e.target.value; recompute(); }));
+  $("week-mode").value = STATE.weekMode;
+  $("week-del").disabled = w.length <= 1;
+}
+function checkWeeks(d, v) {
+  const fr = (h) => (h ?? 0).toLocaleString("fr-FR", { maximumFractionDigits: 2 });
+  const W = computeWeeks(d);
+  const out = [];
+  $("weeks-sum").textContent = W ? "Total : " + fr(W.worked) + " h travaillées · " + fr(W.h25) + " h sup à 25 % · " + fr(W.h50) + " h sup à 50 %" : "";
+  if (!W) { out.push({ s: "info", t: "Note tes heures de chaque semaine", d: "Par exemple 50, 42, 38, 47 (ou « 47h30 »). L'outil calcule les heures sup que tu aurais dû être payé et les compare avec la fiche." }); return out; }
+  out.push({ s: "info", t: "Ce que tu as noté", d: W.detail.map((x) => x.label + " : " + fr(x.tot) + " h" + (x.a || x.b ? " → " + (x.a ? fr(x.a) + " h à 25 %" : "") + (x.a && x.b ? " + " : "") + (x.b ? fr(x.b) + " h à 50 %" : "") : "")).join(" · ") + ". Heures sup dues : <b>" + fr(W.hs) + " h</b>. Avec la mensualisation, ta paie devrait compter <b>151,67 h + " + fr(W.hs) + " h = " + fr(W.expectedPaid) + " h</b>." });
+  const h25 = v.hs25 || 0, h50 = v.hs50 || 0, paidHS = h25 + h50;
+  const T = v.taux || (v.brut && v.heures ? v.brut / (v.heures + h25 * 0.25 + h50 * 0.5) : null);
+  const money = (a, b) => T ? r2(T * (a * 1.25 + b * 1.5)) : null;
+  const miss = r2(W.hs - paidHS);
+  if (v.hs25 == null && v.hs50 == null && W.hs > 0) {
+    out.push({ s: "bad", t: "Heures sup absentes de la fiche", d: "Tu as noté " + fr(W.hs) + " h sup, mais la fiche n'indique aucune heure majorée." + (T ? " Montant en jeu ≈ <b>" + eur(money(W.h25, W.h50)) + "</b> brut." : "") + " Vérifie aussi que le total d'heures payées les inclut." });
+  } else if (miss > 0.1) {
+    const m25 = Math.max(0, W.h25 - h25), m50 = Math.max(0, W.h50 - h50);
+    out.push({ s: "bad", t: "Il manque " + fr(miss) + " h sup sur la fiche", d: "Selon tes heures : " + fr(W.h25) + " h à 25 % et " + fr(W.h50) + " h à 50 %. La fiche paie " + fr(h25) + " h à 25 % et " + fr(h50) + " h à 50 %." + (T ? " Manque estimé ≈ <b>" + eur(money(m25, m50)) + " brut</b> (taux horaire ≈ " + eur(T) + ")." : "") + " Demande à ton employeur son décompte d'heures semaine par semaine." });
+  } else if (miss < -0.1) {
+    out.push({ s: "info", t: "La fiche paie " + fr(-miss) + " h sup de plus que ton décompte", d: "Ton décompte donne " + fr(W.hs) + " h sup, la fiche en paie " + fr(paidHS) + ". Vérifie qu'il ne manque pas une semaine dans ta saisie (une semaine à cheval sur deux mois est en général payée avec le mois où elle se termine)." });
+  } else {
+    out.push({ s: "ok", t: "Nombre d'heures sup juste", d: fr(W.hs) + " h sup selon toi, " + fr(paidHS) + " h sur la fiche." });
+  }
+  if (Math.abs(miss) <= 0.1 && (Math.abs(W.h50 - h50) > 0.1)) {
+    const diff = r2(W.h50 - h50);
+    out.push({ s: diff > 0 ? "bad" : "info", t: "Mauvaise répartition 25 % / 50 %", d: "Le total d'heures sup est juste, mais " + (diff > 0 ? fr(diff) + " h devraient être majorées à 50 % au lieu de 25 %" + (T ? " : manque ≈ <b>" + eur(r2(diff * T * 0.25)) + " brut</b>." : ".") : "la fiche met plus d'heures à 50 % que ton décompte (à ton avantage).") + " Au-delà de 43 h dans une semaine, c'est +50 % (sauf accord prévoyant autre chose, jamais moins de +10 %)." });
+  }
+  if (v.heures != null) {
+    const dh = r2(v.heures - W.expectedPaid);
+    if (dh < -0.1) out.push({ s: "bad", t: "Heures payées inférieures à tes heures", d: "La fiche paie " + fr(v.heures) + " h, ton décompte donne " + fr(W.expectedPaid) + " h (151,67 h + " + fr(W.hs) + " h sup). Il manque <b>" + fr(-dh) + " h</b>" + (T ? ", soit ≈ " + eur(r2(-dh * T)) + " brut au minimum." : ".") });
+    else if (dh > 0.1) out.push({ s: "info", t: "La fiche paie " + fr(dh) + " h de plus que ton décompte", d: "Fiche : " + fr(v.heures) + " h ; ton décompte : " + fr(W.expectedPaid) + " h. Ça peut venir d'un jour férié, d'heures d'équivalence, de temps de pause payé ou d'une régularisation : demande ce que c'est." });
+    else out.push({ s: "ok", t: "Total d'heures payées juste", d: fr(v.heures) + " h payées pour " + fr(W.expectedPaid) + " h dues." });
+  }
+  if (W.low.length) out.push({ s: "info", t: "Semaine(s) sous 35 h : " + W.low.map((i) => "S" + i).join(", "), d: "Avec la mensualisation, une semaine plus courte ne baisse pas ton salaire, sauf absence (congé, maladie, absence non payée), qui doit alors apparaître sur la fiche. En décompte à la semaine, elle ne compense pas les heures sup des autres semaines." });
+  out.push({ s: "info", t: "Mode de calcul utilisé", d: (STATE.weekMode === "two" ? "Sur 2 semaines : heures sup au-delà de 70 h par période de 2 semaines (16 premières à 25 %). Ce mode n'est valable que si un accord collectif le prévoit." : "Règle générale du Code du travail : heures sup au-delà de 35 h par semaine (lundi-dimanche), les 8 premières à +25 %, ensuite +50 %.") + " Certains métiers ont un régime particulier (temps de travail calculé sur l'amplitude avec un coefficient, heures d'équivalence, décompte sur un cycle) : entre alors tes heures telles qu'elles doivent être comptées, et vérifie ce que prévoit ta convention collective." });
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
 /* Comparaison sur plusieurs mois                                      */
 /* ------------------------------------------------------------------ */
 function hsReductionPresent(text) {
@@ -1188,7 +1286,7 @@ function renderMulti(P) {
   if (docs.length < 2) return;
   const fr = (h) => h == null ? "—" : h.toLocaleString("fr-FR", { maximumFractionDigits: 2 });
   const M = docs.map((d) => ({ d, m: docMetrics(d, P) }));
-  $("multi-rows").innerHTML = M.map(({ d, m }) => `<tr><td>${esc(d.label)}</td><td class="n">${eur(d.values.brut)}</td><td class="n">${fr(d.values.heures)}</td><td class="n">${m.hsTot ? fr(m.hsTot) : "—"}</td><td>${m.hsTot ? (m.red ? '<span class="pill ok">oui</span>' : '<span class="pill bad">non</span>') : "—"}</td><td class="n">${m.exo == null ? "—" : eur(m.exo)}</td><td class="n">${eur(d.values.nonSoumis)}</td><td class="n">${eur(d.values.netSocial)}</td><td class="n">${eur(d.values.netPaye)}</td></tr>`).join("");
+  $("multi-rows").innerHTML = M.map(({ d, m }) => `<tr><td>${esc(d.label)}</td><td class="n">${eur(d.values.brut)}</td><td class="n">${fr(d.values.heures)}</td><td class="n">${m.hsTot ? fr(m.hsTot) : "—"}</td><td class="n">${(() => { const W = computeWeeks(d); return W ? fr(W.hs) + (Math.abs(W.hs - m.hsTot) > 0.1 ? (W.hs > m.hsTot ? ' <span class="pill bad">−' + fr(r2(W.hs - m.hsTot)) + '</span>' : "") : "") : "—"; })()}</td><td>${m.hsTot ? (m.red ? '<span class="pill ok">oui</span>' : '<span class="pill bad">non</span>') : "—"}</td><td class="n">${m.exo == null ? "—" : eur(m.exo)}</td><td class="n">${eur(d.values.nonSoumis)}</td><td class="n">${eur(d.values.netSocial)}</td><td class="n">${eur(d.values.netPaye)}</td></tr>`).join("");
   const out = [];
   const withHS = M.filter((x) => x.m.hsTot > 0);
   const noRed = withHS.filter((x) => !x.m.red);
@@ -1208,6 +1306,14 @@ function renderMulti(P) {
   }
   const socialBad = M.filter((x) => x.m.ns > 0 && x.d.values.netSocial != null && x.d.values.netAvant != null && near(x.d.values.netSocial, x.d.values.netAvant, 0.05));
   if (socialBad.length) out.push({ s: "warn", t: "Net social incluant les indemnités sur " + socialBad.length + " mois", d: "Mois : " + socialBad.map((x) => x.d.label).join(", ") + ". Écart total ≈ " + eur(socialBad.reduce((a, x) => a + x.m.ns, 0)) + " de revenus en trop déclarés à la CAF si ces indemnités sont des frais." });
+  const wk = M.map((x) => ({ ...x, W: computeWeeks(x.d) })).filter((x) => x.W);
+  if (wk.length) {
+    const missH = r2(wk.reduce((a, x) => a + Math.max(0, x.W.hs - x.m.hsTot), 0));
+    const months = wk.filter((x) => x.W.hs - x.m.hsTot > 0.1).map((x) => x.d.label);
+    out.push(missH > 0.1
+      ? { s: "bad", t: "Heures sup manquantes sur " + months.length + " mois : " + missH.toLocaleString("fr-FR", { maximumFractionDigits: 2 }) + " h", d: "Mois : " + months.join(", ") + ", d'après les heures que tu as notées." }
+      : { s: "ok", t: "Heures sup conformes à ton décompte", d: "Sur les " + wk.length + " mois où tu as noté tes heures." });
+  }
   const indem = docs.map((d) => ({ d, t: indemTotal(d) })).filter((x) => x.t.any && !x.t.missingUnit);
   if (indem.length) {
     const diff = r2(indem.reduce((a, x) => a + (x.d.values.nonSoumis || 0) - x.t.tot, 0));
@@ -1227,12 +1333,14 @@ function recompute() {
   renderSummary(v);
   const calc = checkCalculs(v, P), cotis = checkCotisations(STATE.lines, v, P), ment = checkMentions(STATE.text);
   const indem = d ? checkIndem(d, v) : [];
+  const sem = d ? checkWeeks(d, v) : [];
+  renderChecks("checks-sem", "count-sem", sem);
   renderChecks("checks-calc", "count-calc", calc);
   renderChecks("checks-cotis", "count-cotis", cotis);
   renderChecks("checks-mentions", "count-mentions", ment);
   renderChecks("checks-indem", "count-indem", indem);
   renderMulti(P);
-  STATE.results = { calc, cotis, ment, indem, v };
+  STATE.results = { calc, cotis, ment, indem, sem, v };
 }
 
 function analyse(text, msg, kind, name) {
@@ -1271,7 +1379,7 @@ function reportText() {
     "Analyse de ma fiche de paie" + ($("periode-lue").textContent ? " (" + $("periode-lue").textContent + ")" : ""),
     "",
     "Points à vérifier :",
-    bad(R.calc.concat(R.cotis, R.indem)) || "- aucun",
+    bad(R.calc.concat(R.sem || [], R.cotis, R.indem)) || "- aucun",
     multi ? "\nSur plusieurs mois :\n" + multi : "",
     "",
     "Mentions obligatoires (art. R3243-1 du Code du travail) que je ne trouve pas :",
@@ -1325,11 +1433,13 @@ function buildDataBlock() {
     const vals = FIELDS.filter((f) => d.values[f.id] != null).map((f) => "- " + f.label + " : " + String(d.values[f.id]).replace(".", ",")).join("\n");
     const indem = INDEM.filter((it) => d.counts[it.id]).map((it) => "- " + it.label + " : " + d.counts[it.id] + " × " + (STATE.units[it.id] != null ? eur(STATE.units[it.id]) : "montant non indiqué")).join("\n");
     const flags = [d.flags.cadre ? "cadre" : "non cadre", d.flags.alsace ? "Alsace-Moselle" : "", d.flags.plafondHS ? "le salarié indique avoir déjà dépassé le plafond de 7 500 € d'heures sup exonérées d'impôt cette année" : ""].filter(Boolean).join(" ; ");
+    const W = computeWeeks(d);
+    const wk = W ? "Heures réellement travaillées notées par le salarié, semaine par semaine (" + (STATE.weekMode === "two" ? "décompte sur 2 semaines" : "décompte hebdomadaire") + ") : " + weeksOf(d).map((x, i) => "S" + (i + 1) + " = " + (x || "?")).join(", ") + " → " + W.worked + " h travaillées, heures sup dues " + W.h25 + " h à 25 % et " + W.h50 + " h à 50 %.\n" : "Le salarié n'a pas noté ses heures semaine par semaine pour ce mois.\n";
     return "=== FICHE : " + d.label + (d.example ? " (EXEMPLE FICTIF)" : "") + " ===\n" +
       "Texte extrait du PDF (anonymisé) :\n" + anonymize(d.text).slice(0, 14000) + "\n\n" +
       "Chiffres retenus (lus automatiquement puis éventuellement corrigés par le salarié) :\n" + vals + "\n" +
       "Situation : " + flags + "\n" +
-      (indem ? "Décompte du salarié pour ses indemnités ce mois-ci :\n" + indem + "\n" : "Le salarié n'a pas indiqué son décompte de paniers pour ce mois.\n");
+      wk + (indem ? "Décompte du salarié pour ses indemnités ce mois-ci :\n" + indem + "\n" : "Le salarié n'a pas indiqué son décompte de paniers pour ce mois.\n");
   }).join("\n\n") + "\n\nParamètres utilisés par l'outil : SMIC horaire " + eur(P.smic) + ", PMSS " + eur(P.pmss) + ".";
 }
 function localFindings() {
@@ -1337,7 +1447,7 @@ function localFindings() {
   const strip = (h) => h.replace(/<[^>]+>/g, "");
   const list = (arr) => arr.filter((c) => c.s !== "ok").map((c) => "- [" + STATUS_LABEL[c.s] + "] " + c.t + " : " + strip(c.d)).join("\n");
   const multi = Array.from(document.querySelectorAll("#checks-multi li")).map((li) => "- " + li.querySelector(".title").textContent + " : " + li.querySelector(".detail").textContent).join("\n");
-  return "Constats de l'outil automatique pour la fiche affichée (" + curDoc().label + ") :\n" + list(R.calc.concat(R.cotis, R.indem, R.ment)) + (multi ? "\n\nConstats sur plusieurs mois :\n" + multi : "");
+  return "Constats de l'outil automatique pour la fiche affichée (" + curDoc().label + ") :\n" + list(R.calc.concat(R.sem || [], R.cotis, R.indem, R.ment)) + (multi ? "\n\nConstats sur plusieurs mois :\n" + multi : "");
 }
 const AI_RULES = `Tu es un expert de la paie en France (règles 2026), au service d'un salarié qui a du mal à lire ses fiches de paie. Tu tutoies, tu écris en français simple, sans jargon (ou en l'expliquant).
 
@@ -1462,7 +1572,7 @@ $("btn-clear").addEventListener("click", () => {
   if (AI.busy) AI.ctl?.abort();
   STATE.docs = []; AI.turns = []; AI.html = []; aiRender(); $("ai-ask").hidden = true;
   $("paste-area").value = ""; $("ai-question").value = ""; $("ai-preview").textContent = ""; $("report-fallback").value = ""; $("report-fallback").hidden = true;
-  STATE.units = {}; store.set("units", {});
+  STATE.units = {}; store.set("units", {}); STATE.weekMode = "week"; store.set("weekMode", "week");
   analyse(EXAMPLE, "Tout est effacé de cette page (fiches, chiffres, analyses, montants des paniers). L'exemple fictif est affiché.", "example", "Exemple");
 });
 $("btn-copy").addEventListener("click", () => {
@@ -1470,6 +1580,9 @@ $("btn-copy").addEventListener("click", () => {
   const fallback = () => { const ta = $("report-fallback"); ta.hidden = false; ta.value = t; ta.select(); $("copied").textContent = "Sélectionne le texte et copie-le."; };
   try { navigator.clipboard.writeText(t).then(() => { $("copied").textContent = "Rapport copié."; }, fallback); } catch (e) { fallback(); }
 });
+$("week-add").addEventListener("click", () => { weeksOf(curDoc()).push(""); renderWeeksForm(); $("w-" + (curDoc().weeks.length - 1)).focus(); recompute(); });
+$("week-del").addEventListener("click", () => { const w = weeksOf(curDoc()); if (w.length > 1) { w.pop(); renderWeeksForm(); recompute(); } });
+$("week-mode").addEventListener("change", (e) => { STATE.weekMode = e.target.value; store.set("weekMode", STATE.weekMode); recompute(); });
 setupAI();
 
 analyse(EXAMPLE, "Exemple fictif chargé : ce ne sont pas tes chiffres. Dépose tes propres fiches pour les analyser.", "example", "Exemple");
