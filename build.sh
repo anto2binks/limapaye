@@ -46,5 +46,6 @@ for el, path in (("ocr-lib-src", "vendor/ocr/tesseract.min.js"), ("ocr-worker-sr
     t = rd(path); assert "</script" not in t
     ocr += '<script id="%s" type="text/plain">%s</script>\n' % (el, t)
 ocr += '<script id="ocr-lang-src" type="text/plain">%s</script>\n' % base64.b64encode(open("vendor/ocr/fra.traineddata.gz", "rb").read()).decode()
+open("vendor/ocr/fra.traineddata.b64.txt", "w").write(base64.b64encode(open("vendor/ocr/fra.traineddata.gz", "rb").read()).decode())
 open("dist/fiche-paie.html", "w", encoding="utf-8").write(head + "</head>\n<body>\n" + src.replace(tag, inline + "\n" + ocr) + foot)
 PY

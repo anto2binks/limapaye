@@ -1905,9 +1905,14 @@ async function ocrWorker(onProgress) {
       if (!window.Tesseract) await loadScriptUrl(base + "tesseract.min.js");
       workerPath = base + "worker.min.js";
       corePath = base;
-      const r = await fetch(base + "fra.traineddata.gz");
-      if (!r.ok) throw new Error("données de langue introuvables");
-      langData = new Uint8Array(await r.arrayBuffer());
+      let r = await fetch(base + "fra.traineddata.gz").catch(() => null);
+      if (r && r.ok) langData = new Uint8Array(await r.arrayBuffer());
+      else {
+        // Variante texte (base64) pour les hébergements qui ne servent pas les .gz
+        r = await fetch(base + "fra.traineddata.b64.txt");
+        if (!r.ok) throw new Error("données de langue introuvables");
+        const bin = atob((await r.text()).trim()); langData = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) langData[i] = bin.charCodeAt(i);
+      }
     }
     const w = await Tesseract.createWorker([{ code: "fra", data: langData }], 1, {
       workerPath, corePath, workerBlobURL: !standalone, cacheMethod: "none", gzip: true,
