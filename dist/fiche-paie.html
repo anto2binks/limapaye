@@ -1302,18 +1302,23 @@ function checkCalculs(v, P) {
 
   if (has("heures") || hB != null) {
     const h = has("heures") ? v.heures : hB + hsTot;
+    const prB = curDoc() ? prorata(curDoc(), STATE.contrat || 35) : null;
     const base = hB != null ? hB : (h - hsTot > 151.67 ? 151.67 : r2(h - hsTot));
     let d, st = "info";
     const pr = curDoc() ? prorata(curDoc(), STATE.contrat || 35) : null;
     if (pr && base >= pr.min - 0.1 && base <= pr.max + 0.1) d = "Base de " + fh(base) + " : salaire proratisé du mois d'embauche (arrivée le " + pr.entry.toLocaleDateString("fr-FR") + ", " + fh(pr.lostH) + " retirées pour " + pr.days.join(", ") + ").";
     else if (pr && base < pr.min - 0.1) { d = "Base de " + fh(base) + " : plus faible que la proratisation du mois d'embauche (" + fh(pr.min) + " minimum)."; st = "warn"; }
+    else if (pr && base > pr.max + 0.1 && hB == null) {
+      st = "warn";
+      d = "<b>Le total d'heures écrit sur la fiche ne correspond pas à son propre détail.</b> Base proratisée " + fh(pr.b1) + " (151,67 h − " + fh(pr.lostH) + " pour " + pr.days.join(", ") + ") + " + fh(hsTot) + " d'heures majorées = <b>" + fh(r2(pr.b1 + hsTot)) + "</b>, mais la fiche écrit <b>" + fh(h) + "</b> : " + fh(r2(h - pr.b1 - hsTot)) + " de plus, sans explication. Demande à quoi elles correspondent (jour férié, heures non majorées, erreur de saisie…) et sur quel nombre d'heures ton brut a été calculé.";
+    }
     else if (near(base, 151.67, 0.02)) d = "Base de 151,67 h = 35 h par semaine × 52 semaines ÷ 12 mois : temps plein, payé pareil chaque mois.";
     else if (base < 151.6) d = "Base de " + fh(base) + " : temps partiel (≈ " + (base * 12 / 52).toFixed(1).replace(".", ",") + " h par semaine). Les heures au-delà de ton contrat sont des heures complémentaires : +10 % jusqu'à un dixième de ton contrat, +25 % au-delà.";
     else d = "Base de " + fh(base) + ", plus qu'un temps plein (151,67 h) : les heures au-delà de 35 h par semaine doivent être payées en heures sup majorées.";
     if (hsTot) {
       d += " Heures majorées sur la fiche : " + [HI.h25 && fh(HI.h25) + " à 25 %", HI.h50 && fh(HI.h50) + " à 50 %", HI.c10 && fh(HI.c10) + " complémentaires à 10 %", HI.c25 && fh(HI.c25) + " complémentaires à 25 %"].filter(Boolean).join(", ") + ". Total payé : " + fh(h) + ".";
       const rest = r2(h - base - hsTot);
-      if (rest > 0.2) { st = "warn"; d += " Il reste <b>" + fh(rest) + "</b> payées qui ne sont ni dans la base ni majorées : demande à quoi elles correspondent (heures d'équivalence, temps de pause payé, régularisation…)."; }
+      if (rest > 0.2 && !(pr && base > pr.max + 0.1)) { st = "warn"; d += " Il reste <b>" + fh(rest) + "</b> payées qui ne sont ni dans la base ni majorées : demande à quoi elles correspondent (heures d'équivalence, temps de pause payé, régularisation…)."; }
     } else if (h > 151.7) { st = "warn"; d += " " + fh(h) + " payées mais aucune heure majorée trouvée : les heures au-delà de 151,67 h devraient apparaître en heures sup (+25 % puis +50 %)."; }
     out.push({ s: st, t: "Durée du travail", d });
   }
@@ -1805,7 +1810,7 @@ function checkWeeks(d, v) {
       "<b>Heures travaillées</b> = la somme de tes semaines : " + fh(W.worked) + ".<br>" +
       "<b>Heures à payer</b> = ta base mensualisée " + fh(W.baseM) + (W.hc ? " + " + fh(W.hc) + " complémentaires" : "") + " + tes " + fh(W.hs) + " sup = <b>" + fh(W.expectedPaid) + "</b>.<br>" +
       "La base mensualisée paie toujours le même nombre d'heures chaque mois (" + fh(W.baseFull) + " = " + String(W.C).replace(".", ",") + " h × 52 semaines ÷ 12), quel que soit le nombre de jours du mois" + (W.prorata ? ", sauf le mois d'embauche où elle est réduite (voir ci-dessous)" : "") + ". " +
-      "Ce mois-ci, tes heures normales (hors heures sup) font " + fh(normal) + (Math.abs(gap) < 0.02 ? ", exactement la base." : gap > 0
+      "Ce mois-ci, tes heures jusqu'à " + fh(W.C) + " par semaine (hors heures sup) font " + fh(normal) + (Math.abs(gap) < 0.02 ? ", exactement la base." : gap > 0
         ? " : la base t'en paie " + fh(gap) + " de plus. C'est le lissage de la mensualisation, il s'équilibre sur l'année (les mois plus longs, tu en fais plus que la base)."
         : " : tu as fait " + fh(-gap) + " de plus que la base sans qu'elles soient des heures sup (semaines sous " + String(W.C).replace(".", ",") + " h, ou mois long). C'est le lissage de la mensualisation.") +
       " C'est le chiffre <b>à payer</b> qu'on compare avec ta fiche." });
@@ -1844,11 +1849,17 @@ function checkWeeks(d, v) {
     else if (dh > 0.1) out.push({ s: "info", t: "La fiche paie " + fh(dh) + " de plus que ton décompte", d: "Fiche : " + fh(v.heures) + " ; ton décompte : " + fh(W.expectedPaid) + ". Ça peut venir d'un jour férié, d'heures d'équivalence, de temps de pause payé ou d'une régularisation : demande ce que c'est." });
     else out.push({ s: "ok", t: "Total d'heures payées juste", d: fh(v.heures) + " payées pour " + fh(W.expectedPaid) + " dues." });
   }
+  if (!W.prorata && W.C >= 35 && v.heures != null) {
+    const hsF = (v.hs25 || 0) + (v.hs50 || 0) + (v.hc10 || 0) + (v.hc25 || 0);
+    const baseF = v.hBase != null ? v.hBase : r2(v.heures - hsF);
+    if (baseF < 151.67 - 0.5) out.push({ s: "warn", t: "Embauché ou absent ce mois-ci ? Indique ta date d'embauche", d: "La fiche paie une base de " + fh(baseF) + ", moins que les 151,67 h d'un mois complet. Si tu as été embauché ce mois-ci, remplis <b>« Date d'embauche »</b> juste au-dessus : l'appli retirera les jours avant ton arrivée (par exemple 2 jours = 14,00 h) et refera tous les calculs. Sinon, il doit y avoir une absence, qui doit apparaître sur la fiche." });
+  }
   if (W.prorata) out.push({ s: "info", t: "Embauche le " + W.prorata.entry.toLocaleDateString("fr-FR") + " : base réduite à " + fh(W.baseM), d: "Le mois d'embauche, la base n'est pas de " + fh(W.baseFull) + " : on retire les jours ouvrés du mois avant ton arrivée (" + (W.prorata.days.join(", ") || "aucun") + "), soit " + W.prorata.days.length + " jour(s) × " + fh(W.C / 5) + " = " + fh(W.prorata.lostH) + ". Base attendue : <b>" + fh(W.baseM) + "</b> (méthode des heures réelles, la plus courante). Avec la méthode des jours ouvrés (" + W.prorata.worked + " jours travaillés sur " + W.prorata.all + "), on trouve " + fh(W.prorata.b2) + ". Les deux méthodes sont admises ; l'employeur doit appliquer la même à chaque fois. Jours fériés exclus." });
   if (W.prorata && v.heures != null) {
     const hsFiche = (v.hs25 || 0) + (v.hs50 || 0) + (v.hc10 || 0) + (v.hc25 || 0);
     const baseFiche = v.hBase != null ? v.hBase : r2(v.heures - hsFiche);
     if (baseFiche < W.prorata.min - 0.1) out.push({ s: "bad", t: "Base du mois d'embauche trop faible", d: "La fiche paie " + fh(baseFiche) + " de base, alors que la proratisation donne entre " + fh(W.prorata.min) + " et " + fh(W.prorata.max) + ". Il manque au moins " + fh(r2(W.prorata.min - baseFiche)) + "." });
+    else if (baseFiche > W.prorata.max + 0.1) out.push({ s: "warn", t: "Total d'heures de la fiche incohérent : " + fh(r2(baseFiche - W.prorata.b1)) + " inexpliquées", d: "Base proratisée attendue " + fh(W.prorata.b1) + " + " + fh(hsFiche) + " d'heures majorées = " + fh(r2(W.prorata.b1 + hsFiche)) + ", mais la fiche écrit " + fh(v.heures) + " au total. Soit la fiche compte " + fh(r2(baseFiche - W.prorata.b1)) + " de plus quelque part sans le dire, soit le total est faux. Sans le détail des lignes, impossible de savoir lequel : demande le détail du calcul." });
     else out.push({ s: "ok", t: "Base du mois d'embauche correcte", d: "La fiche paie " + fh(baseFiche) + " de base (" + fh(v.heures) + " au total − " + fh(hsFiche) + " d'heures majorées) : ça correspond à la proratisation (" + fh(W.prorata.b1) + (Math.abs(W.prorata.b1 - W.prorata.b2) > 0.02 ? " à " + fh(W.prorata.b2) : "") + ")." });
   }
   const calW = weekCalendar(d);
