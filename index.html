@@ -200,13 +200,13 @@ table.multi td.n { font-family: var(--font-num); text-align: right; }
   <header class="top">
     <span class="eyebrow">Bulletin de salaire · France · règles 2026</span>
     <h1>Décodeur de fiche de paie</h1>
-    <p class="muted">Dépose ta fiche de paie (PDF, ou photo). L'outil lit chaque ligne, t'explique en français simple ce qu'elle veut dire, refait les calculs et liste les mentions obligatoires qui manquent. Tu peux déposer des PDF ou des photos, plusieurs mois d'un coup pour les comparer. Tes fiches ne quittent pas ton appareil et ne sont enregistrées nulle part.</p>
+    <p class="muted">Dépose ta fiche de paie en PDF. L'outil lit chaque ligne, t'explique en français simple ce qu'elle veut dire, refait les calculs et liste les mentions obligatoires qui manquent. Tu peux déposer plusieurs PDF d'un coup pour comparer les mois. Tes fiches ne quittent pas ton appareil et ne sont enregistrées nulle part.</p>
   </header>
 
   <details class="panel" id="secu">
     <summary>Où vont tes données ?</summary>
     <ul class="checks">
-      <li class="ok"><span class="stripe"></span><div class="body"><div class="row1"><span class="title">Tes PDF et tes photos restent sur ton appareil</span></div><div class="detail">La lecture (y compris la reconnaissance du texte des photos) et toutes les vérifications se font dans ton navigateur. La page ne contacte aucun service externe : pas de polices en ligne, pas de bibliothèque chargée ailleurs, pas de statistiques.</div></div></li>
+      <li class="ok"><span class="stripe"></span><div class="body"><div class="row1"><span class="title">Tes PDF restent sur ton appareil</span></div><div class="detail">La lecture et toutes les vérifications se font dans ton navigateur. La page ne contacte aucun service externe : pas de polices en ligne, pas de bibliothèque chargée ailleurs, pas de statistiques.</div></div></li>
       <li class="ok"><span class="stripe"></span><div class="body"><div class="row1"><span class="title">Rien n'est enregistré</span></div><div class="detail">Tes fiches ne sont stockées nulle part, ni sur un serveur ni dans le navigateur : fermer ou recharger la page les efface. Seuls les montants unitaires des paniers sont gardés sur cet appareil (« Tout effacer » les supprime).</div></div></li>
       <li class="ok"><span class="stripe"></span><div class="body"><div class="row1"><span class="title">Partager l'application ne partage pas tes fiches</span></div><div class="detail">L'application ne contient que le programme. Tes fiches, tes heures et tes résultats n'existent que sur ton écran, le temps que la page est ouverte.</div></div></li>
       <li class="info"><span class="stripe"></span><div class="body"><div class="row1"><span class="title">Seule exception : l'analyse détaillée par Claude</span></div><div class="detail">Uniquement si tu cliques sur le bouton, et après ton accord. Le texte est anonymisé avant l'envoi (nom, prénom, adresse, n° de Sécu, IBAN, e-mail, téléphone retirés partout). Tu peux lire exactement ce qui part dans « Voir le texte envoyé à Claude ». Il est traité par ton compte Claude, comme une conversation.</div></div></li>
@@ -217,12 +217,12 @@ table.multi td.n { font-family: var(--font-num); text-align: right; }
     <h2 id="h-import" hidden>Importer</h2>
     <div class="drop" id="drop">
       <div class="txt">
-        <strong>Glisse tes fiches de paie ici (PDF ou photos)</strong>
-        <span class="muted small">Des PDF ou des photos (JPEG, PNG, photos d'iPhone), quel que soit le logiciel de paie (URSSAF/TESE, CEA, Sage, Silae, PayFit, ADP, Cegid…). Plusieurs mois permettent de vérifier les heures sup et les paniers dans le temps.</span>
+        <strong>Glisse tes fiches de paie ici (PDF)</strong>
+        <span class="muted small">Un ou plusieurs PDF, quel que soit le logiciel de paie (URSSAF/TESE, CEA, Sage, Silae, PayFit, ADP, Cegid…). Plusieurs mois permettent de vérifier les heures sup et les paniers dans le temps.</span>
       </div>
       <div class="btns">
-        <label class="btn primary" for="file">Choisir des fiches ou des photos</label>
-        <input type="file" id="file" accept="application/pdf,image/*,.heic,.heif" multiple>
+        <label class="btn primary" for="file">Choisir des fiches (PDF)</label>
+        <input type="file" id="file" accept="application/pdf,.pdf" multiple>
         <button type="button" id="btn-paste">Coller le texte</button>
         <button type="button" id="btn-example">Recharger l'exemple</button>
         <button type="button" id="btn-clear">Tout effacer</button>
@@ -396,7 +396,7 @@ table.multi td.n { font-family: var(--font-num); text-align: right; }
   <footer class="legal">
     <span><strong>© 2026 Antoine M.M – Tous droits réservés.</strong></span>
     <span>Toute reproduction, copie, modification ou diffusion de cette application, totale ou partielle, sans autorisation écrite de l'auteur est interdite.</span>
-    <span>Composants libres utilisés : pdf.js et Tesseract.js (licence Apache 2.0).</span>
+    <span>Composants libres utilisés : pdf.js (licence Apache 2.0).</span>
   </footer>
 </div>
 
@@ -574,7 +574,7 @@ async function readPdf(file) {
     if (p < pdf.numPages) out.push("");
   }
   const text = out.join("\n");
-  if (text.replace(/\s/g, "").length < 40) throw new Error("Ce PDF est une image scannée : il ne contient pas de texte lisible. Télécharge le PDF original depuis ton espace salarié (ou demande-le à ton employeur), ou recopie les lignes avec « Coller le texte ».");
+  if (text.replace(/\s/g, "").length < 40) throw new Error("Ce PDF est une image scannée : il ne contient pas de texte lisible. Télécharge le PDF original depuis ton espace salarié (ou demande-le à ton employeur).");
   return text;
 }
 
@@ -724,7 +724,7 @@ function extract(text) {
   if (f._heuresFromBase && f._absHours) f.heures = r2(f.heures - f._absHours);
   f.cout = lastNum(findLine(lines, (n) => /total verse par l.employeur|cout (total|global|employeur|salarial total)|total employeur/.test(n)));
 
-  // Virgule perdue (fréquent sur une photo) : « 22660 » pour 226,60 alors que le brut vaut 2 895,51
+  // Virgule perdue (erreur de lecture) : « 22660 » pour 226,60 alors que le brut vaut 2 895,51
   f._fixed = [];
   if (f.brut > 0) for (const k of ["nonSoumis", "netAvant", "netPaye", "netSocial", "netImpo", "pas", "totalSal", "totalPat"]) {
     const x = f[k];
@@ -1868,143 +1868,23 @@ function analyse(text, msg, kind, name) {
   setStatus(msg, kind);
 }
 
-/* ------------------------------------------------------------------ */
-/* Photos (JPEG, PNG, HEIC) : reconnaissance de texte SUR L'APPAREIL   */
-/* Moteur Tesseract intégré à l'appli : aucune image n'est envoyée.    */
-/* ------------------------------------------------------------------ */
-const OCR = { worker: null, loading: null };
-function inlineText(id) { const el = document.getElementById(id); return el ? el.textContent : null; }
-function blobUrl(text, type) { return URL.createObjectURL(new Blob([text], { type: type || "text/javascript" })); }
-function loadScriptUrl(src) {
-  return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("chargement du moteur de lecture impossible")); document.head.appendChild(s); });
-}
-async function ocrWorker(onProgress) {
-  if (OCR.worker) return OCR.worker;
-  if (OCR.loading) return OCR.loading;
-  OCR.loading = (async () => {
-    const standalone = !!document.getElementById("ocr-lib-src");
-    let workerPath, corePath, langData;
-    if (standalone) {
-      if (!window.Tesseract) { const s = document.createElement("script"); s.textContent = inlineText("ocr-lib-src"); document.head.appendChild(s); }
-      // Moteur et worker réunis dans un seul script : rien à charger depuis le fichier local
-      workerPath = blobUrl(inlineText("ocr-core-src") + "\n;self.TesseractCore = self.TesseractCore || (typeof TesseractCore !== 'undefined' ? TesseractCore : undefined);\n" + inlineText("ocr-worker-src"));
-      corePath = "inline.js";
-      const b64 = inlineText("ocr-lang-src").trim();
-      const bin = atob(b64); langData = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) langData[i] = bin.charCodeAt(i);
-    } else {
-      const base = new URL("vendor/ocr/", location.href).href;
-      if (!window.Tesseract) await loadScriptUrl(base + "tesseract.min.js");
-      workerPath = base + "worker.min.js";
-      corePath = base;
-      let r = await fetch(base + "fra.traineddata.gz").catch(() => null);
-      if (r && r.ok) langData = new Uint8Array(await r.arrayBuffer());
-      else {
-        // Variante texte (base64) pour les hébergements qui ne servent pas les .gz
-        r = await fetch(base + "fra.traineddata.b64.txt");
-        if (!r.ok) throw new Error("données de langue introuvables");
-        const bin = atob((await r.text()).trim()); langData = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) langData[i] = bin.charCodeAt(i);
-      }
-    }
-    const w = await Tesseract.createWorker([{ code: "fra", data: langData }], 1, {
-      workerPath, corePath, workerBlobURL: !standalone, cacheMethod: "none", gzip: true,
-      logger: (m) => { if (onProgress && m && typeof m.progress === "number") onProgress(m.status, m.progress); },
-    });
-    await w.setParameters({ preserve_interword_spaces: "1", tessedit_pageseg_mode: "11" }); // texte épars : la mise en page est reconstituée par layoutPage
-    OCR.worker = w;
-    return w;
-  })();
-  try { return await OCR.loading; } finally { OCR.loading = null; }
-}
-
-async function decodeImage(file) {
-  // Orientation EXIF respectée ; HEIC lisible seulement là où le navigateur le sait (Safari)
-  if (window.createImageBitmap) {
-    try { return await createImageBitmap(file, { imageOrientation: "from-image" }); } catch (e) { /* on essaie autrement */ }
-  }
-  const url = URL.createObjectURL(file);
-  try {
-    return await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error("image illisible")); im.src = url; });
-  } finally { setTimeout(() => URL.revokeObjectURL(url), 1000); }
-}
-function prepareImage(img) {
-  // Réduit les grosses photos (12 Mpx de l'iPhone) et renforce le contraste
-  const W0 = img.width || img.naturalWidth, H0 = img.height || img.naturalHeight;
-  const scale = Math.min(1, 2600 / Math.max(W0, H0));
-  const w = Math.round(W0 * scale), h = Math.round(H0 * scale);
-  const c = document.createElement("canvas"); c.width = w; c.height = h;
-  const ctx = c.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(img, 0, 0, w, h);
-  const id = ctx.getImageData(0, 0, w, h), d = id.data;
-  let lo = 255, hi = 0; const g = new Uint8ClampedArray(w * h);
-  for (let i = 0, j = 0; i < d.length; i += 4, j++) { const v = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; g[j] = v; }
-  const hist = new Uint32Array(256); g.forEach((v) => hist[v]++);
-  let acc = 0; const n = w * h;
-  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc > n * 0.01) { lo = v; break; } }
-  acc = 0; for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc > n * 0.01) { hi = v; break; } }
-  const k = 255 / Math.max(1, hi - lo);
-  for (let i = 0, j = 0; i < d.length; i += 4, j++) { const v = Math.max(0, Math.min(255, (g[j] - lo) * k)); d[i] = d[i + 1] = d[i + 2] = v; }
-  ctx.putImageData(id, 0, 0);
-  return c;
-}
-async function readImage(file, label) {
-  let img;
-  try { img = await decodeImage(file); }
-  catch (e) {
-    if (/heic|heif/i.test(file.type + file.name)) throw new Error("photo HEIC illisible dans ce navigateur. Ouvre l'appli dans Safari, ou règle l'iPhone sur Réglages > Appareil photo > Formats > « Le plus compatible » (JPEG), ou fais une capture d'écran de la photo");
-    throw new Error("image illisible");
-  }
-  const canvas = prepareImage(img);
-  const w = await ocrWorker((status, p) => {
-    const what = /load|init/i.test(status) ? "Préparation du moteur de lecture" : "Lecture de " + label;
-    setStatus(what + "… " + Math.round(p * 100) + " %");
-  });
-  const { data } = await w.recognize(canvas, { rotateAuto: true }, { text: true, blocks: true });
-  const words = [];
-  (data.blocks || []).forEach((b) => (b.paragraphs || []).forEach((pa) => (pa.lines || []).forEach((ln) => (ln.words || []).forEach((wd) => words.push(wd)))));
-  const list = words.length ? words : (data.words || []);
-  const clean = (t) => String(t || "").replace(/^[|¦\[\]{}_—–]+|[|¦\[\]{}_—–]+$/g, "").trim();
-  const items = list.filter((wd) => clean(wd.text) && wd.confidence > 15).map((wd) => ({
-    s: clean(wd.text), x: wd.bbox.x0, y: -(wd.bbox.y0 + wd.bbox.y1) / 2, w: wd.bbox.x1 - wd.bbox.x0, h: Math.max(6, wd.bbox.y1 - wd.bbox.y0),
-  }));
-  const conf = list.length ? list.reduce((a, wd) => a + (wd.confidence || 0), 0) / list.length : 0;
-  const text = items.length ? layoutPage(items).join("\n") : (data.text || "");
-  if (text.replace(/\s/g, "").length < 40) throw new Error("aucun texte reconnu sur la photo : reprends-la bien à plat, nette et éclairée, cadrée sur la fiche");
-  return { text, conf };
-}
-
 async function readFileText(file) {
   if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) return readPdf(file);
-  if (file.type.startsWith("image/") || /\.(jpe?g|png|heic|heif|webp)$/i.test(file.name)) return readImage(file, "« " + file.name + " »");
-  throw new Error("format non pris en charge : utilise un PDF ou une photo (JPEG, PNG, HEIC)");
+  throw new Error("seuls les PDF sont acceptés (pas de photos ni d'images)");
 }
 async function handleFiles(files) {
   files = Array.from(files || []); if (!files.length) return;
-  const docs = [], errs = []; let photoConf = [];
-  let lastPhotoDoc = null;
+  const docs = [], errs = [];
   for (const [i, file] of files.entries()) {
     setStatus("Lecture de « " + file.name + " » (" + (i + 1) + "/" + files.length + ")…");
-    try {
-      const r = await readFileText(file);
-      if (typeof r === "string") { docs.push(makeDoc(file.name, r)); lastPhotoDoc = null; continue; }
-      photoConf.push(r.conf);
-      const d = makeDoc(file.name, r.text);
-      // Plusieurs photos d'une même fiche (page 1, page 2…) : on les réunit
-      if (lastPhotoDoc && (!d.f._periode || d.f._periode === lastPhotoDoc.f._periode)) {
-        const merged = makeDoc(lastPhotoDoc.name, lastPhotoDoc.text + "\n\n" + r.text);
-        merged.photo = true;
-        docs[docs.indexOf(lastPhotoDoc)] = merged; lastPhotoDoc = merged;
-      } else { d.photo = true; docs.push(d); lastPhotoDoc = d; }
-    } catch (e) { errs.push(file.name + " : " + (e.message || e)); }
+    try { docs.push(makeDoc(file.name, await readFileText(file))); }
+    catch (e) { errs.push(file.name + " : " + (e.message || e)); }
   }
   if (docs.length) addDocs(docs);
   let ok = docs.length ? docs.length + (docs.length > 1 ? " fiches analysées" : " fiche analysée") + ". Vérifie les chiffres lus ci-dessous." : "";
   const fixed = docs.flatMap((d) => (d.f._fixed || []).map((k) => (FIELDS.find((x) => x.id === k) || {}).label)).filter(Boolean);
   if (fixed.length) ok += " Virgule manquante corrigée pour : " + fixed.join(", ") + " (vérifie).";
-  if (photoConf.length) {
-    const c = photoConf.reduce((a, x) => a + x, 0) / photoConf.length;
-    ok += " Lu depuis une photo (fiabilité ≈ " + Math.round(c) + " %) : compare bien chaque chiffre avec ta fiche, un 8 peut être lu 3." + (c < 75 ? " Pour un meilleur résultat : fiche bien à plat, sans reflet, photo prise de face." : "");
-  }
-  setStatus([ok, errs.length ? "Non lues : " + errs.join(" ; ") : ""].filter(Boolean).join(" "), errs.length && !docs.length ? "err" : (photoConf.length ? "example" : ""));
+  setStatus([ok, errs.length ? "Non lues : " + errs.join(" ; ") : ""].filter(Boolean).join(" "), errs.length && !docs.length ? "err" : "");
 }
 
 /* ------------------------------------------------------------------ */

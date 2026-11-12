@@ -19,6 +19,3 @@ Composants tiers
 Ce logiciel intègre des composants libres, distribués sous leur propre licence,
 qui ne sont pas couverts par la mention ci-dessus :
 - pdf.js 3.11.174 (Mozilla) — Apache License 2.0 — vendor/PDFJS-LICENSE
-- Tesseract.js 5.1.1 et tesseract.js-core 5.1.1 — Apache License 2.0 —
-  vendor/ocr/TESSERACTJS-LICENSE.md, vendor/ocr/TESSERACT-CORE-LICENSE
-- Données de langue française Tesseract (@tesseract.js-data/fra) — Apache License 2.0

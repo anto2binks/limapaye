@@ -18,7 +18,7 @@ self.addEventListener("fetch", (e) => {
       .catch(() => caches.match("index.html")));
     return;
   }
-  // Fichiers du programme (dont le moteur de lecture des photos, gardé après sa 1re utilisation)
+  // Fichiers du programme
   e.respondWith(caches.match(req).then((hit) => hit || fetch(req).then((r) => {
     if (r.ok && /\/vendor\//.test(new URL(req.url).pathname)) { const copy = r.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
     return r;
