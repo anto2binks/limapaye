@@ -678,7 +678,7 @@ function extract(text) {
   if (!npL) npL = findLine(lines, (n) => /net (a|à) payer/.test(n) && !/avant/.test(n));
   f.netPaye = maxNum(npL);
 
-  f._absences = lines.filter((l, i) => /absence|entree\/sortie|entree sortie|retenue (pour )?(absence|maladie)|maladie|accident du travail|conges? sans solde|non remunere|jours? de carence|greve|mise a pied/.test(norm(l)) && !/cotisation|complementaire|prevoyance|indemnite|professionnelle|suppression|evolution|sante|totalite|complement/.test(norm(l)) && numbersIn(l).some((x) => x < 0) && !inCumul(lines, i));
+  f._absences = lines.filter((l, i) => /absence|entree\/sortie|entree sortie|entree en cours|embauche en cours|retenue (pour )?(absence|maladie)|maladie|accident du travail|conges? sans solde|non remunere|jours? de carence|greve|mise a pied/.test(norm(l)) && !/cotisation|complementaire|prevoyance|indemnite|professionnelle|suppression|evolution|sante|totalite|complement/.test(norm(l)) && numbersIn(l).some((x) => x < 0) && !inCumul(lines, i));
   f._cpLines = lines.filter((l, i) => { const n = norm(l); return /conges? payes?|\bc\.?p\.?\b|conges? (acquis|pris|restants?)|solde (de )?conges|acquis n|n-1|n - 1|jours? (de conges|acquis|pris)/.test(n) && !/cotisation|caisse de conges payes? \d/.test(n) && !inCumul(lines, i); });
   f._absHours = r2(f._absences.reduce((a, l) => { const ns = numbersIn(l); return a + (ns.length >= 3 && Math.abs(ns[0]) < 250 && /\b(heures?|hres?|h)\b|\d,\d{2}\s+\d/.test(norm(l)) ? Math.abs(ns[0]) : 0); }, 0));
   if (f._heuresFromBase && f._absHours) f.heures = r2(f.heures - f._absHours);
@@ -943,6 +943,7 @@ function checkCalculs(v, P) {
       else if (Math.abs(u) > v.taux + 0.01 && Math.abs(Math.abs(amt) - e) > 0.1) { s = "warn"; d += " Taux de retenue (" + eur(Math.abs(u)) + ") plus élevé que ton taux horaire (" + eur(v.taux) + ")."; }
       else d += " " + fh(h) + " retenues au taux de " + eur(Math.abs(u)) + ".";
     }
+    if (/entree|embauche|arrivee/.test(norm(l))) { d = "Retenue pour les jours avant ton embauche : " + eur(Math.abs(amt)) + (h != null ? " pour " + fh(h) : "") + ". C'est normal le mois d'embauche (base de 151,67 h réduite)."; s = "ok"; }
     if (/maladie|accident/.test(norm(l))) d += " En arrêt maladie, l'employeur doit souvent compléter les indemnités de la Sécu (maintien de salaire, selon ton ancienneté et ta convention) : vérifie qu'une ligne d'indemnisation apparaît.";
     out.push({ s, t: "Absence", d, src: l });
   }
@@ -961,7 +962,8 @@ function checkCalculs(v, P) {
   if (has("heures") || hB != null) {
     const h = has("heures") ? v.heures : hB + hsTot;
     const prB = curDoc() ? prorata(curDoc(), STATE.contrat || 35) : null;
-    const base = hB != null ? hB : (h - hsTot > 151.67 ? 151.67 : r2(h - hsTot));
+    const absC = (curDoc() && curDoc().f._absHours) || 0;
+    const base = hB != null ? r2(hB - (prB ? absC : 0)) : (h - hsTot > 151.67 ? 151.67 : r2(h - hsTot));
     let d, st = "info";
     const pr = curDoc() ? prorata(curDoc(), STATE.contrat || 35) : null;
     if (pr && base >= pr.min - 0.1 && base <= pr.max + 0.1) d = "Base de " + fh(base) + " : salaire proratisé du mois d'embauche (arrivée le " + pr.entry.toLocaleDateString("fr-FR") + ", " + fh(pr.lostH) + " retirées pour " + pr.days.join(", ") + ").";
@@ -1505,7 +1507,8 @@ function checkWeeks(d, v) {
     out.push({ s: diff > 0 ? "bad" : "info", t: "Mauvaise répartition 25 % / 50 %", d: "Le total d'heures sup est juste, mais " + (diff > 0 ? fh(diff) + " devraient être majorées à 50 % au lieu de 25 %" + (T ? " : manque ≈ <b>" + eur(r2(diff * T * 0.25)) + " brut</b>." : ".") : "la fiche met plus d'heures à 50 % que ton décompte (à ton avantage).") + " Au-delà de 43 h dans une semaine, c'est +50 % (sauf accord prévoyant autre chose, jamais moins de +10 %)." });
   }
   const absH = curDoc() && curDoc().f._absHours || 0;
-  if (absH) { W.expectedPaid = r2(W.expectedPaid - absH); out.push({ s: "info", t: "Absence prise en compte : " + fh(absH) + "", d: "La fiche retient " + fh(absH) + " d'absence : elles sont déduites des heures attendues. Vérifie que ces heures correspondent bien à une absence réelle." }); }
+  if (absH && W.prorata && Math.abs(absH - W.prorata.lostH) <= 0.5) out.push({ s: "ok", t: "Retenue d'entrée de la fiche : " + fh(absH) + " ✓", d: "La fiche retire " + fh(absH) + " pour les jours avant ton arrivée (" + W.prorata.days.join(", ") + "), comme le calcul de l'appli : 151,67 h − " + fh(absH) + " = " + fh(W.baseM) + ". Ces heures ne sont pas retirées une deuxième fois." });
+  else if (absH) { W.expectedPaid = r2(W.expectedPaid - absH); out.push({ s: "info", t: "Absence prise en compte : " + fh(absH) + "", d: "La fiche retient " + fh(absH) + " d'absence : elles sont déduites des heures attendues. Vérifie que ces heures correspondent bien à une absence réelle." }); }
   if (v.heures != null) {
     const dh = r2(v.heures - W.expectedPaid);
     if (W.C >= 35 && v.hBase != null && v.hBase < 151.6 && !W.prorata) out.push({ s: "info", t: "Ta fiche indique un temps partiel", d: "Base de " + fh(v.hBase) + ". Indique la durée de ton contrat par semaine dans « Contrat (h/semaine) » pour un calcul juste des heures complémentaires." });
@@ -1521,7 +1524,8 @@ function checkWeeks(d, v) {
   if (W.prorata) out.push({ s: "info", t: "Embauche le " + W.prorata.entry.toLocaleDateString("fr-FR") + " : base réduite à " + fh(W.baseM), d: "Le mois d'embauche, la base n'est pas de " + fh(W.baseFull) + " : on retire les jours ouvrés du mois avant ton arrivée (" + (W.prorata.days.join(", ") || "aucun") + "), soit " + W.prorata.days.length + " jour(s) × " + fh(W.C / 5) + " = " + fh(W.prorata.lostH) + ". Base attendue : <b>" + fh(W.baseM) + "</b> (méthode des heures réelles, la plus courante). Avec la méthode des jours ouvrés (" + W.prorata.worked + " jours travaillés sur " + W.prorata.all + "), on trouve " + fh(W.prorata.b2) + ". Les deux méthodes sont admises ; l'employeur doit appliquer la même à chaque fois. Jours fériés exclus." });
   if (W.prorata && v.heures != null) {
     const hsFiche = (v.hs25 || 0) + (v.hs50 || 0) + (v.hc10 || 0) + (v.hc25 || 0);
-    const baseFiche = v.hBase != null ? v.hBase : r2(v.heures - hsFiche);
+    const absF = (curDoc() && curDoc().f._absHours) || 0;
+    const baseFiche = v.hBase != null ? r2(v.hBase - absF) : r2(v.heures - hsFiche);
     if (baseFiche < W.prorata.min - 0.1) out.push({ s: "bad", t: "Base du mois d'embauche trop faible", d: "La fiche paie " + fh(baseFiche) + " de base, alors que la proratisation donne entre " + fh(W.prorata.min) + " et " + fh(W.prorata.max) + ". Il manque au moins " + fh(r2(W.prorata.min - baseFiche)) + "." });
     else if (baseFiche > W.prorata.max + 0.1) out.push({ s: "warn", t: "Total d'heures de la fiche incohérent : " + fh(r2(baseFiche - W.prorata.b1)) + " inexpliquées", d: "Base proratisée attendue " + fh(W.prorata.b1) + " + " + fh(hsFiche) + " d'heures majorées = " + fh(r2(W.prorata.b1 + hsFiche)) + ", mais la fiche écrit " + fh(v.heures) + " au total. Soit la fiche compte " + fh(r2(baseFiche - W.prorata.b1)) + " de plus quelque part sans le dire, soit le total est faux. Sans le détail des lignes, impossible de savoir lequel : demande le détail du calcul." });
     else out.push({ s: "ok", t: "Base du mois d'embauche correcte", d: "La fiche paie " + fh(baseFiche) + " de base (" + fh(v.heures) + " au total − " + fh(hsFiche) + " d'heures majorées) : ça correspond à la proratisation (" + fh(W.prorata.b1) + (Math.abs(W.prorata.b1 - W.prorata.b2) > 0.02 ? " à " + fh(W.prorata.b2) : "") + ")." });
