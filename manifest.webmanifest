@@ -1,0 +1,16 @@
+{
+  "name": "Décodeur de fiche de paie",
+  "short_name": "Fiche de paie",
+  "description": "Analyse ta fiche de paie : calculs, heures sup, congés, paniers et mentions obligatoires. Tout reste sur ton appareil.",
+  "lang": "fr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f6f9",
+  "theme_color": "#2f3fd0",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

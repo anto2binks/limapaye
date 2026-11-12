@@ -14,6 +14,11 @@ Application web (une seule page, tout tourne dans le navigateur) qui analyse les
 
 ## Utilisation
 
+**En ligne (installable sur l'écran d'accueil)** : https://anto2binks.github.io/fichepaie/ (GitHub Pages, branche `claude/pensive-hypatia-yp4smk`, dossier racine). Une fois ouverte, l'appli fonctionne aussi hors connexion.
+
+**Hors ligne** : `dist/fiche-paie.html`, un seul fichier à ouvrir dans un navigateur.
+
+
 Ouvrir `index.html` dans un navigateur, puis déposer le PDF de la fiche de paie (ou coller son texte).
 Aucune donnée n'est envoyée : le PDF est lu localement avec pdf.js (copie locale dans `vendor/`, version 3.11.174 du paquet npm `pdfjs-dist`).
 
@@ -31,6 +36,6 @@ Empreintes SHA-256 :
 feabdf309770ed24bba31a5467836cdc8cf639c705af27d52b585b041bb8527b  vendor/pdf.worker.min.js
 ```
 
-`fichepaie.html` est la source ; `./build.sh` régénère `index.html`.
+`fichepaie.html` est la source ; `./build.sh` régénère `index.html`, `sw.js` et `dist/fiche-paie.html`.
 
 Les paramètres légaux (SMIC, PMSS) sont modifiables dans la page. Outil d'aide à la lecture, sans valeur juridique.
