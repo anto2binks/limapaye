@@ -24,7 +24,8 @@ Aucune donnée n'est envoyée : le PDF est lu localement avec pdf.js (copie loca
 
 ## Sécurité
 
-- Aucune ressource externe : polices système, pdf.js servi avec la page, pas de statistiques.
+- Aucune ressource externe : polices système, pdf.js et moteur de lecture des photos (Tesseract) servis avec la page, pas de statistiques.
+- Photos (JPEG, PNG, HEIC) lues sur l'appareil par Tesseract.js 5.1.1 (`vendor/ocr/`, données de langue `fra` 4.0.0_best_int). Correctif appliqué dans `worker.min.js` : nom de langue (`t.code`) au lieu des données (`t.data`) à l'initialisation.
 - Les fiches ne sont stockées nulle part (ni serveur, ni navigateur) ; « Tout effacer » vide la page.
 - Seule exception, sur demande explicite : l'analyse par Claude, après anonymisation (nom, prénom, adresse, n° de Sécu, IBAN, e-mail, téléphone).
 - Ne jamais committer de fiche de paie dans ce dépôt (`*.pdf` est ignoré).
@@ -32,6 +33,11 @@ Aucune donnée n'est envoyée : le PDF est lu localement avec pdf.js (copie loca
 Empreintes SHA-256 :
 
 ```
+a8e29918d098b2b06e1012bdaeffb4aec0445c5d5654709023e0bd1f442a80e8  vendor/ocr/tesseract.min.js
+dffed8e679814a7c3fc4ad8fc3c1bbc8eee7cf76dfa0612641f69314fa1a9734  vendor/ocr/worker.min.js
+ce20eda9533cbed1e6c2b4276fbae1e0adc61b6754b5513084be601787b457cf  vendor/ocr/tesseract-core-simd-lstm.wasm.js
+8f04aa0cc81e7bde33f80e92fa01a7a665f0b4884d098acf5de9c7104a11dfaa  vendor/ocr/tesseract-core-lstm.wasm.js
+d611139672b3752c7097e671e4a1d9209dfd37f2aeb081ef6487fba3351e9255  vendor/ocr/fra.traineddata.gz
 5b5799e6f8c680663207ac5b42ee14eed2a406fa7af48f50c154f0c0b1566946  vendor/pdf.min.js
 feabdf309770ed24bba31a5467836cdc8cf639c705af27d52b585b041bb8527b  vendor/pdf.worker.min.js
 ```

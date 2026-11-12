@@ -603,6 +603,7 @@ function extractHsItems(lines) {
   return items;
 }
 
+function maxNum(line) { if (!line) return null; const ns = numbersIn(line).filter((x) => x > 0); return ns.length ? Math.max(...ns) : lastNum(line); }
 function lastNum(line) { if (!line) return null; const ns = numbersIn(line); return ns.length ? ns[ns.length - 1] : null; }
 
 function extract(text) {
@@ -657,9 +658,9 @@ function extract(text) {
   if (totL) { const ns = numbersIn(totL).filter((x) => x > 0); if (ns.length >= 2) { f.totalSal = ns[ns.length - 2]; f.totalPat = ns[ns.length - 1]; } else if (ns.length) f.totalSal = ns[0]; }
 
   f.nonSoumis = lastNum(findLine(lines, (n) => /non soumis|indemnites? non|frais professionnels|remboursement de frais/.test(n)));
-  f.netAvant = lastNum(findLine(lines, (n) => /net (a|à) payer avant|net avant imp|net a payer avant/.test(n)));
+  f.netAvant = maxNum(findLine(lines, (n) => /net (a|à) payer avant|net avant imp|net a payer avant/.test(n)));
   f.netImpo = lastNum(findLine(lines, (n) => /net imposable|net fiscal|montant imposable/.test(n) && !/cumul/.test(n)));
-  f.netSocial = lastNum(findLine(lines, (n) => /net social/.test(n)));
+  f.netSocial = maxNum(findLine(lines, (n) => /net social/.test(n)));
 
   const pasL = findLine(lines, (n) => /prelevement a la source|impot sur le revenu (preleve|retenu)|retenue a la source|^pas\b|impot preleve/.test(n) && !/net a payer avant|deductible/.test(n));
   if (pasL) {
@@ -673,7 +674,7 @@ function extract(text) {
 
   let npL = findLine(lines, (n) => /net (paye|verse|a verser)/.test(n) && !/avant/.test(n));
   if (!npL) npL = findLine(lines, (n) => /net (a|à) payer/.test(n) && !/avant/.test(n));
-  f.netPaye = lastNum(npL);
+  f.netPaye = maxNum(npL);
 
   f._absences = lines.filter((l, i) => /absence|entree\/sortie|entree sortie|retenue (pour )?(absence|maladie)|maladie|accident du travail|conges? sans solde|non remunere|jours? de carence|greve|mise a pied/.test(norm(l)) && !/cotisation|complementaire|prevoyance|indemnite|professionnelle|suppression|evolution|sante|totalite|complement/.test(norm(l)) && numbersIn(l).some((x) => x < 0) && !inCumul(lines, i));
   f._cpLines = lines.filter((l, i) => { const n = norm(l); return /conges? payes?|\bc\.?p\.?\b|conges? (acquis|pris|restants?)|solde (de )?conges|acquis n|n-1|n - 1|jours? (de conges|acquis|pris)/.test(n) && !/cotisation|caisse de conges payes? \d/.test(n) && !inCumul(lines, i); });
@@ -681,6 +682,12 @@ function extract(text) {
   if (f._heuresFromBase && f._absHours) f.heures = r2(f.heures - f._absHours);
   f.cout = lastNum(findLine(lines, (n) => /total verse par l.employeur|cout (total|global|employeur|salarial total)|total employeur/.test(n)));
 
+  // Virgule perdue (fréquent sur une photo) : « 22660 » pour 226,60 alors que le brut vaut 2 895,51
+  f._fixed = [];
+  if (f.brut > 0) for (const k of ["nonSoumis", "netAvant", "netPaye", "netSocial", "netImpo", "pas", "totalSal", "totalPat"]) {
+    const x = f[k];
+    if (x != null && Number.isInteger(x) && x > f.brut * 1.6 && x / 100 < f.brut * 1.6) { f[k] = r2(x / 100); f._fixed.push(k); }
+  }
   const periode = (text.match(/p[ée]riode[^\n]*?du\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+au\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/i) || text.match(/du\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+au\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/i));
   f._periode = periode ? "Période du " + periode[1] + " au " + periode[2] : "";
   f._cadre = /\bcadre\b/.test(norm(text)) && !/non[- ]cadre/.test(norm(text));
@@ -1546,8 +1553,9 @@ async function ocrWorker(onProgress) {
     let workerPath, corePath, langData;
     if (standalone) {
       if (!window.Tesseract) { const s = document.createElement("script"); s.textContent = inlineText("ocr-lib-src"); document.head.appendChild(s); }
-      workerPath = blobUrl(inlineText("ocr-worker-src"));
-      corePath = blobUrl(inlineText("ocr-core-src")) + "#core.js";
+      // Moteur et worker réunis dans un seul script : rien à charger depuis le fichier local
+      workerPath = blobUrl(inlineText("ocr-core-src") + "\n;self.TesseractCore = self.TesseractCore || (typeof TesseractCore !== 'undefined' ? TesseractCore : undefined);\n" + inlineText("ocr-worker-src"));
+      corePath = "inline.js";
       const b64 = inlineText("ocr-lang-src").trim();
       const bin = atob(b64); langData = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) langData[i] = bin.charCodeAt(i);
     } else {
@@ -1563,7 +1571,7 @@ async function ocrWorker(onProgress) {
       workerPath, corePath, workerBlobURL: !standalone, cacheMethod: "none", gzip: true,
       logger: (m) => { if (onProgress && m && typeof m.progress === "number") onProgress(m.status, m.progress); },
     });
-    await w.setParameters({ preserve_interword_spaces: "1", tessedit_pageseg_mode: "6" });
+    await w.setParameters({ preserve_interword_spaces: "1", tessedit_pageseg_mode: "11" }); // texte épars : la mise en page est reconstituée par layoutPage
     OCR.worker = w;
     return w;
   })();
@@ -1616,8 +1624,9 @@ async function readImage(file, label) {
   const words = [];
   (data.blocks || []).forEach((b) => (b.paragraphs || []).forEach((pa) => (pa.lines || []).forEach((ln) => (ln.words || []).forEach((wd) => words.push(wd)))));
   const list = words.length ? words : (data.words || []);
-  const items = list.filter((wd) => wd.text && wd.text.trim() && wd.confidence > 20).map((wd) => ({
-    s: wd.text, x: wd.bbox.x0, y: -(wd.bbox.y0 + wd.bbox.y1) / 2, w: wd.bbox.x1 - wd.bbox.x0, h: Math.max(6, wd.bbox.y1 - wd.bbox.y0),
+  const clean = (t) => String(t || "").replace(/^[|¦\[\]{}_—–]+|[|¦\[\]{}_—–]+$/g, "").trim();
+  const items = list.filter((wd) => clean(wd.text) && wd.confidence > 15).map((wd) => ({
+    s: clean(wd.text), x: wd.bbox.x0, y: -(wd.bbox.y0 + wd.bbox.y1) / 2, w: wd.bbox.x1 - wd.bbox.x0, h: Math.max(6, wd.bbox.y1 - wd.bbox.y0),
   }));
   const conf = list.length ? list.reduce((a, wd) => a + (wd.confidence || 0), 0) / list.length : 0;
   const text = items.length ? layoutPage(items).join("\n") : (data.text || "");
@@ -1651,6 +1660,8 @@ async function handleFiles(files) {
   }
   if (docs.length) addDocs(docs);
   let ok = docs.length ? docs.length + (docs.length > 1 ? " fiches analysées" : " fiche analysée") + ". Vérifie les chiffres lus ci-dessous." : "";
+  const fixed = docs.flatMap((d) => (d.f._fixed || []).map((k) => (FIELDS.find((x) => x.id === k) || {}).label)).filter(Boolean);
+  if (fixed.length) ok += " Virgule manquante corrigée pour : " + fixed.join(", ") + " (vérifie).";
   if (photoConf.length) {
     const c = photoConf.reduce((a, x) => a + x, 0) / photoConf.length;
     ok += " Lu depuis une photo (fiabilité ≈ " + Math.round(c) + " %) : compare bien chaque chiffre avec ta fiche, un 8 peut être lu 3." + (c < 75 ? " Pour un meilleur résultat : fiche bien à plat, sans reflet, photo prise de face." : "");
