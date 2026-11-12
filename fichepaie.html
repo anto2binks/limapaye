@@ -785,6 +785,8 @@ function checkCalculs(v, P) {
       : { s: "warn", t: "Brut − cotisations ≠ net avant impôt", d: formula + " = <b>" + eur(e) + "</b>, mais la fiche indique " + eur(v.netAvant) + " (écart " + eur(v.netAvant - e) + "). L'écart peut venir de titres-restaurant, d'un remboursement de transport ou d'un avantage en nature : vérifie qu'une ligne l'explique." });
   }
   if (ns0 > 0) {
+    const detailed = /panier|repas|casse[- ]?croute|deplacement|indemnite (de )?(nuit|dimanche|transport)|grand deplacement|kilometr/.test(norm(STATE.text));
+    if (!detailed) out.push({ s: "bad", t: "Nature des indemnités non indiquée", d: "La fiche ne montre qu'un total de " + eur(ns0) + " d'« indemnités non soumises », sans dire ce que c'est. Le Code du travail (art. R3243-1) impose d'indiquer la <b>nature et le montant</b> de chaque somme versée en plus du salaire : chaque type d'indemnité (panier repas, casse-croûte, repas unique…) doit avoir sa ligne, avec le nombre et le montant unitaire. Sans ça, tu ne peux pas vérifier que tous tes paniers sont payés au tarif de ta convention collective." });
     out.push({ s: "info", t: "Indemnités non soumises à cotisations : " + eur(ns0), d: "Ce sont en général des remboursements de frais professionnels (repas, casse-croûte, déplacements). Ils ne donnent droit ni à retraite ni à chômage. La fiche ne dit pas ce qu'ils contiennent : tu peux demander le détail, et vérifier les montants prévus par ta convention collective." });
   }
 
@@ -804,8 +806,9 @@ function checkCalculs(v, P) {
     const hsPay = r2(T * (h25 * 1.25 + h50 * 1.5));
     const gainNet = r2(hsPay * 0.1131);
     if (!hasRed) {
-      out.push({ s: "bad", t: "Heures sup : réduction de cotisations et exonération d'impôt absentes", d: "Ta fiche indique " + fr(hsTot) + " h majorées, mais aucune ligne « réduction de cotisations salariales heures supplémentaires » n'apparaît. Normalement, la rémunération des heures sup (estimée ici à ≈ <b>" + eur(hsPay) + "</b>) donne droit à : 1) une baisse de tes cotisations retraite d'environ 11,31 %, soit ≈ <b>" + eur(gainNet) + " de net en plus</b> ; 2) une exonération d'impôt sur le revenu (jusqu'à 7 500 € par an), qui baisse ton net imposable et ton prélèvement à la source. Demande à ton employeur s'il a bien déclaré le montant des heures sup dans la déclaration TESE/DSN." });
+      out.push({ s: "bad", t: "Heures sup : réduction de cotisations salariales absente", d: "Ta fiche indique " + fr(hsTot) + " h majorées, mais aucune ligne « réduction de cotisations salariales heures supplémentaires » n'apparaît. Cette réduction (≈ 11,31 % de la rémunération des heures sup, estimée ici à ≈ " + eur(hsPay) + ") <b>n'a pas de plafond annuel</b> : elle reste due même après les 7 500 € d'exonération d'impôt. Manque estimé : ≈ <b>" + eur(gainNet) + " de net ce mois-ci</b>. Compare avec tes fiches précédentes : si la ligne y figurait, son absence ce mois-ci est une erreur de déclaration." });
     } else out.push({ s: "ok", t: "Heures sup : réduction de cotisations présente", d: "Une ligne de réduction de cotisations sur les heures supplémentaires apparaît sur la fiche." });
+    out.push({ s: "info", t: "Heures en heures/minutes", d: "Sur la fiche, les heures peuvent être écrites en heures et minutes (200h10) ou en centièmes (200,17 h) : la loi n'impose pas de format. Le piège est le calcul : 10 min = 0,17 h et non 0,10 h, 15 min = 0,25 h. Ici l'outil convertit : " + fr(v.heures || 0) + " h dont " + fr(h25) + " h à 25 % et " + fr(h50) + " h à 50 %. Comme la fiche ne donne ni le taux horaire ni le montant de chaque type d'heures, tu ne peux pas vérifier que la conversion a été bien faite : demande le détail." });
   }
 
   if (has("netImpo") && has("tauxPas") && has("pas")) {
@@ -825,7 +828,8 @@ function checkCalculs(v, P) {
     else if (d > 0 && d < 0.06 * v.brut) { s = "ok"; txt = formula + ". Les " + eur(d) + " en plus correspondent en général à la part employeur de ta mutuelle, qui est imposable."; }
     else if (d < 0 && d > -0.3 * v.brut) { s = hsTot ? "ok" : "warn"; txt = "Le net imposable (" + eur(v.netImpo) + ") est plus bas que " + eur(e) + (hsTot ? " : c'est l'exonération d'impôt de tes heures supplémentaires." : ". Normal seulement si tu as des heures supplémentaires exonérées ou une prime défiscalisée. Sinon, demande une explication."); }
     else { s = "warn"; txt = "Le net imposable (" + eur(v.netImpo) + ") s'éloigne beaucoup du montant attendu (" + eur(e) + ")."; }
-    if (hsTot > 0 && d >= -0.1) { s = "bad"; txt += " <b>Mais tu as " + fr(hsTot) + " h supplémentaires</b> : leur rémunération devrait être retirée du net imposable (exonération jusqu'à 7 500 € par an). Elle ne l'a pas été, donc tu paies trop d'impôt à la source."; }
+    if (hsTot > 0 && d >= -0.1 && v.plafondHS) { txt += " Tes heures sup ne sont pas déduites, ce qui est normal puisque tu as déjà dépassé le plafond annuel de 7 500 € d'exonération d'impôt."; }
+    else if (hsTot > 0 && d >= -0.1) { s = "bad"; txt += " <b>Mais tu as " + fr(hsTot) + " h supplémentaires</b> : leur rémunération devrait être retirée du net imposable (exonération jusqu'à 7 500 € par an). Elle ne l'a pas été : si tu as déjà dépassé les 7 500 € cette année, coche la case correspondante dans « Les chiffres lus », sinon tu paies trop d'impôt à la source."; }
     out.push({ s, t: "Net imposable" + (STATE.meta.impoFromPas ? " (lu comme « base » de l'impôt)" : ""), d: txt });
   }
 
@@ -885,6 +889,7 @@ const MENTIONS = [
   ["Net payé / versé", /net (paye|verse|a verser)|net (a|à) payer(?!\s*avant)/, "oblig"],
   ["Montant net social", /net social/, "oblig", "Obligatoire depuis 2024. C'est ce montant que tu déclares à la CAF pour la prime d'activité ou le RSA."],
   ["Date de paiement", /date de (paiement|versement|paie)|pa(ye|iement) le|verse le|paiement :/, "oblig"],
+  ["Détail des indemnités (paniers repas, casse-croûte, déplacements…)", /panier|repas|casse[- ]?croute|deplacement|kilometr/, "situ", "Obligatoire dès que tu en touches : chaque indemnité doit apparaître avec sa nature et son montant. Si tu touches des « indemnités non soumises » sans détail, c'est incomplet."],
   ["Congés payés (dates de congé et indemnité)", /conges|\bcp\b/, "situ", "Obligatoire si tu as pris des congés ce mois-ci. Beaucoup d'employeurs affichent aussi le solde : c'est conseillé."],
   ["Heures supplémentaires (nombre et majoration)", /heures? sup|majoration|majore|\bhs\b|heures? compl/, "situ", "Obligatoire seulement si tu en as fait."],
   ["Total versé par l'employeur (coût total)", /total verse par l.employeur|cout (total|global|employeur)/, "oblig"],
@@ -918,15 +923,17 @@ function renderChecks(ulId, countId, items) {
 function buildForm() {
   $("form").innerHTML = FIELDS.map((f) => `<div class="field"><label for="f-${f.id}">${f.label}</label><input id="f-${f.id}" inputmode="decimal" autocomplete="off">${f.hint ? `<span class="hint">${f.hint}</span>` : ""}</div>`).join("") +
     `<div class="field check"><input type="checkbox" id="f-cadre"><label for="f-cadre">Je suis cadre</label></div>` +
-    `<div class="field check"><input type="checkbox" id="f-alsace"><label for="f-alsace">Je travaille en Alsace-Moselle</label></div>`;
+    `<div class="field check"><input type="checkbox" id="f-alsace"><label for="f-alsace">Je travaille en Alsace-Moselle</label></div>` +
+    `<div class="field check"><input type="checkbox" id="f-plafondHS"><label for="f-plafondHS">J'ai déjà dépassé 7 500 € d'heures sup exonérées d'impôt cette année</label></div>`;
   $("params").innerHTML = PARAMS.map((p) => `<div class="field"><label for="p-${p.id}">${p.label}</label><input id="p-${p.id}" inputmode="decimal" value="${String(p.value).replace(".", ",")}"></div>`).join("");
   document.querySelectorAll("#form input, #params input").forEach((i) => i.addEventListener("input", recompute));
+  $("f-plafondHS").addEventListener("change", recompute);
 }
 
 function readVal(id) { const s = $(id).value.trim(); if (!s) return null; const n = toNum(s.replace(/[€%\s]/g, "")); return isNaN(n) ? null : n; }
 function getValues() {
   const v = {}; FIELDS.forEach((f) => v[f.id] = readVal("f-" + f.id));
-  v.cadre = $("f-cadre").checked; v.alsace = $("f-alsace").checked;
+  v.cadre = $("f-cadre").checked; v.alsace = $("f-alsace").checked; v.plafondHS = $("f-plafondHS").checked;
   const P = {}; PARAMS.forEach((p) => P[p.id] = readVal("p-" + p.id) ?? p.value);
   return { v, P };
 }
