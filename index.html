@@ -1460,7 +1460,7 @@ function checkWeeks(d, v) {
   const out = [];
   weeksOf(d).forEach((x, i) => { const el = $("wc-" + i); if (el) { const h = parseHours(x); el.textContent = h != null ? "= " + fhBoth(h) : ""; } });
   $("weeks-sum").textContent = W ? "Heures travaillées : " + fh(W.worked) + " · Heures à payer : " + fh(W.expectedPaid) + " (base " + (W.prorata ? "proratisée " : "") + fh(W.baseM) + (W.hc ? " + " + fh(W.hc) + " compl." : "") + " + " + fh(W.hs) + " sup : " + fh(W.h25) + " à 25 %, " + fh(W.h50) + " à 50 %)" : "";
-  if (!W) { out.push({ s: "info", t: "Note tes heures de chaque semaine", d: "Par exemple 50, 42, 38, 47 (ou « 47h30 »). L'outil calcule les heures sup que tu aurais dû être payé et les compare avec la fiche." }); return out; }
+  if (!W) { out.push({ s: "info", t: "Note tes heures de chaque semaine", d: "Par exemple 50 ; 42 ; 38,75 ; 47,50 (tu peux aussi les taper en heures-minutes, la conversion s'affiche sous la case). L'outil calcule les heures sup que tu aurais dû être payé et les compare avec la fiche." }); return out; }
   const tag = (x) => [x.c1 && fh(x.c1) + " compl. à 10 %", x.c2 && fh(x.c2) + " compl. à 25 %", x.a && fh(x.a) + " sup à 25 %", x.b && fh(x.b) + " sup à 50 %"].filter(Boolean).join(" + ");
   const calN = weekCalendar(d);
   if (calN) W.detail.forEach((x) => { x.label = x.label.replace(/S(\d+)/g, (_, n) => { const k = calN.weeks[+n - 1]; return k ? dm(k.inFrom) + "→" + dm(k.inTo) : "S" + n; }); });
