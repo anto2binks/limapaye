@@ -12,7 +12,21 @@ Application web (une seule page, tout tourne dans le navigateur) qui analyse une
 ## Utilisation
 
 Ouvrir `index.html` dans un navigateur, puis déposer le PDF de la fiche de paie (ou coller son texte).
-Aucune donnée n'est envoyée : le PDF est lu localement avec pdf.js.
+Aucune donnée n'est envoyée : le PDF est lu localement avec pdf.js (copie locale dans `vendor/`, version 3.11.174 du paquet npm `pdfjs-dist`).
+
+## Sécurité
+
+- Aucune ressource externe : polices système, pdf.js servi avec la page, pas de statistiques.
+- Les fiches ne sont stockées nulle part (ni serveur, ni navigateur) ; « Tout effacer » vide la page.
+- Seule exception, sur demande explicite : l'analyse par Claude, après anonymisation (nom, prénom, adresse, n° de Sécu, IBAN, e-mail, téléphone).
+- Ne jamais committer de fiche de paie dans ce dépôt (`*.pdf` est ignoré).
+
+Empreintes SHA-256 :
+
+```
+5b5799e6f8c680663207ac5b42ee14eed2a406fa7af48f50c154f0c0b1566946  vendor/pdf.min.js
+feabdf309770ed24bba31a5467836cdc8cf639c705af27d52b585b041bb8527b  vendor/pdf.worker.min.js
+```
 
 `fichepaie.html` est la source ; `./build.sh` régénère `index.html`.
 

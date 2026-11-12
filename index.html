@@ -7,9 +7,7 @@
 <body>
 <title>Décodeur Fiche de Paie</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<meta name="referrer" content="no-referrer">
 <style>
 /* Mise en page : une colonne de lecture, du résumé vers le détail (chiffres → contrôles → mentions → ligne par ligne). */
 :root {
@@ -33,9 +31,10 @@
   --bar-tax: #8a6bd9;
   --bar-cot: #9aa4b8;
   --bar-pat: #c9cfdb;
-  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
-  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-num: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  /* Polices du système uniquement : aucune requête vers un service externe */
+  --font-display: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-num: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -183,8 +182,18 @@ table.multi td.n { font-family: var(--font-num); text-align: right; }
   <header class="top">
     <span class="eyebrow">Bulletin de salaire · France · règles 2026</span>
     <h1>Décodeur de fiche de paie</h1>
-    <p class="muted">Dépose ta fiche de paie (PDF, ou photo). L'outil lit chaque ligne, t'explique en français simple ce qu'elle veut dire, refait les calculs et liste les mentions obligatoires qui manquent. Tu peux déposer plusieurs mois d'un coup pour les comparer. La lecture et les vérifications se font dans ton navigateur : rien n'est envoyé, sauf si tu demandes l'analyse détaillée de Claude (texte anonymisé, sans ton nom, ton adresse ni ton n° de Sécu).</p>
+    <p class="muted">Dépose ta fiche de paie (PDF, ou photo). L'outil lit chaque ligne, t'explique en français simple ce qu'elle veut dire, refait les calculs et liste les mentions obligatoires qui manquent. Tu peux déposer plusieurs mois d'un coup pour les comparer. Tes fiches ne quittent pas ton appareil et ne sont enregistrées nulle part.</p>
   </header>
+
+  <details class="panel" id="secu">
+    <summary>Où vont tes données ?</summary>
+    <ul class="checks">
+      <li class="ok"><span class="stripe"></span><div class="body"><div class="row1"><span class="title">Tes PDF restent sur ton appareil</span></div><div class="detail">La lecture et toutes les vérifications se font dans ton navigateur. La page ne contacte aucun service externe : pas de polices en ligne, pas de bibliothèque chargée ailleurs, pas de statistiques.</div></div></li>
+      <li class="ok"><span class="stripe"></span><div class="body"><div class="row1"><span class="title">Rien n'est enregistré</span></div><div class="detail">Tes fiches ne sont stockées nulle part, ni sur un serveur ni dans le navigateur : fermer ou recharger la page les efface. Seuls les montants unitaires des paniers sont gardés sur cet appareil (« Tout effacer » les supprime).</div></div></li>
+      <li class="ok"><span class="stripe"></span><div class="body"><div class="row1"><span class="title">La page est privée</span></div><div class="detail">Seul le propriétaire du lien peut l'ouvrir, tant qu'il ne la partage pas. Et même partagée, elle ne contient que le programme, jamais tes fiches.</div></div></li>
+      <li class="info"><span class="stripe"></span><div class="body"><div class="row1"><span class="title">Seule exception : l'analyse détaillée par Claude</span></div><div class="detail">Uniquement si tu cliques sur le bouton, et après ton accord. Le texte est anonymisé avant l'envoi (nom, prénom, adresse, n° de Sécu, IBAN, e-mail, téléphone retirés partout). Tu peux lire exactement ce qui part dans « Voir le texte envoyé à Claude ». Il est traité par ton compte Claude, comme une conversation.</div></div></li>
+    </ul>
+  </details>
 
   <section class="section" aria-labelledby="h-import">
     <h2 id="h-import" hidden>Importer</h2>
@@ -195,9 +204,10 @@ table.multi td.n { font-family: var(--font-num); text-align: right; }
       </div>
       <div class="btns">
         <label class="btn primary" for="file">Choisir des fiches</label>
-        <input type="file" id="file" accept="application/pdf,image/*" multiple>
+        <input type="file" id="file" accept="application/pdf" multiple>
         <button type="button" id="btn-paste">Coller le texte</button>
         <button type="button" id="btn-example">Recharger l'exemple</button>
+        <button type="button" id="btn-clear">Tout effacer</button>
       </div>
     </div>
     <div id="paste-box" class="panel" hidden>
@@ -281,13 +291,13 @@ table.multi td.n { font-family: var(--font-num); text-align: right; }
     <div class="panel">
       <p class="muted small" id="ai-intro">Claude relit toutes les fiches chargées, avec tes corrections et tes paniers, et te fait une analyse complète : ce qui est juste, ce qui cloche, les questions à poser et un mail prêt à envoyer. Le texte envoyé est anonymisé (nom, adresse et n° de Sécu retirés). L'analyse utilise ton compte Claude.</p>
       <div class="btns">
-        <button type="button" class="primary" id="ai-run">Lancer l'analyse détaillée</button>
+        <button type="button" class="primary" id="ai-run">Envoyer à Claude (anonymisé)</button>
         <button type="button" id="ai-stop" hidden>Arrêter</button>
       </div>
       <div class="ai-out" id="ai-out"></div>
       <div id="ai-ask" hidden>
         <label for="ai-question"><strong>Une question sur tes fiches ?</strong></label>
-        <textarea id="ai-question" placeholder="Ex. : combien devrait valoir un panier repas d'ambulancier en 2026 ?"></textarea>
+        <textarea id="ai-question" placeholder="Ex. : combien devrait valoir un panier repas dans ma convention collective ?"></textarea>
         <div class="btns"><button type="button" id="ai-send">Poser la question</button></div>
       </div>
       <details><summary class="small muted">Voir le texte envoyé à Claude</summary><pre class="raw" id="ai-preview"></pre></details>
@@ -324,7 +334,7 @@ table.multi td.n { font-family: var(--font-num); text-align: right; }
   </section>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="vendor/pdf.min.js"></script>
 <script>
 "use strict";
 
@@ -482,9 +492,9 @@ function layoutPage(items) {
 
 async function readPdf(file) {
   if (!window.pdfjsLib) throw new Error("Le lecteur PDF n'a pas pu se charger. Vérifie ta connexion, ou utilise « Coller le texte ».");
-  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "vendor/pdf.worker.min.js";
   const data = new Uint8Array(await file.arrayBuffer());
-  const pdf = await pdfjsLib.getDocument({ data }).promise;
+  const pdf = await pdfjsLib.getDocument({ data, isEvalSupported: false, disableFontFace: true, useSystemFonts: false }).promise;
   const out = [];
   for (let p = 1; p <= pdf.numPages; p++) {
     const page = await pdf.getPage(p);
@@ -496,16 +506,6 @@ async function readPdf(file) {
   const text = out.join("\n");
   if (text.replace(/\s/g, "").length < 40) throw new Error("Ce PDF ne contient pas de texte lisible (c'est sûrement un scan). Essaie de l'envoyer en photo, ou recopie les lignes avec « Coller le texte ».");
   return text;
-}
-
-function loadScript(src) {
-  return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("chargement impossible")); document.head.appendChild(s); });
-}
-async function readImage(file) {
-  setStatus("Lecture de la photo (reconnaissance de texte)… cela peut prendre 30 secondes.");
-  if (!window.Tesseract) await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
-  const res = await Tesseract.recognize(file, "fra");
-  return res.data.text;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1249,11 +1249,8 @@ function analyse(text, msg, kind, name) {
 
 async function readFileText(file) {
   if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) return readPdf(file);
-  if (file.type.startsWith("image/")) {
-    try { return await readImage(file); }
-    catch (e) { throw new Error("la lecture des photos n'est pas disponible ici, utilise le PDF"); }
-  }
-  throw new Error("format non pris en charge (PDF ou image)");
+  if (file.type.startsWith("image/")) throw new Error("les photos ne sont pas lues (pour ne passer par aucun service externe) : utilise le PDF, ou « Coller le texte »");
+  throw new Error("format non pris en charge : utilise le PDF");
 }
 async function handleFiles(files) {
   files = Array.from(files || []); if (!files.length) return;
@@ -1294,16 +1291,37 @@ function reportText() {
 /* ------------------------------------------------------------------ */
 /* Analyse détaillée par Claude                                        */
 /* ------------------------------------------------------------------ */
+/* Retire tout ce qui identifie le salarié avant un envoi à Claude :
+   nom, prénom, adresse, n° de Sécu, IBAN, e-mail, téléphone, date de naissance. */
+function identityTokens(text) {
+  const toks = new Set();
+  const add = (str) => (str || "").split(/[\s,'-]+/).forEach((w) => { if (w.length >= 3 && !/^(monsieur|madame|mme|mlle|nom|prenom|prénom)$/i.test(w)) toks.add(w); });
+  for (const raw of text.split("\n")) {
+    let m;
+    if ((m = raw.match(/\b(?:pr[ée]nom|nom(?: de naissance| d'usage)?|salari[ée]e?)\s*:\s*([A-Za-zÀ-ÿ' -]+?)(?=\s{2,}|$)/i))) add(m[1]);
+    if ((m = raw.match(/^\s*(?:monsieur|madame|mme|mlle|m\.)\s+([A-Za-zÀ-ÿ' -]+)$/i))) add(m[1]);
+  }
+  return [...toks];
+}
 function anonymize(text) {
+  const toks = identityTokens(text);
   const out = []; let skip = 0;
   for (const raw of text.split("\n")) {
     const n = norm(raw);
-    if (skip > 0) { skip--; if (/\d{5}|rue|avenue|chemin|bd|boulevard|allee|impasse|place|^\d/.test(n) || skip === 0) continue; }
-    if (/^(monsieur|madame|mme|m\.)\s/.test(n)) { skip = 2; continue; }
-    out.push(raw
-      .replace(/(pr[ée]nom|nom)\s*:\s*[^\s].*?(?=\s{3}|$)/gi, "$1 : [masqué]")
-      .replace(/(n°\s*s[ée]curit[ée] sociale\s*:?)\s*[\d\s]+/gi, "$1 [masqué]")
-      .replace(/\b[12]\s?\d{2}\s?\d{2}\s?\d{2}\s?\d{3}\s?\d{3}(\s?\d{2})?\b/g, "[n° sécu masqué]"));
+    if (skip > 0) { skip--; if (/\d{5}|\brue\b|avenue|chemin|\bbd\b|boulevard|allee|impasse|place|lieu[- ]dit|residence|batiment|^\d/.test(n)) continue; skip = 0; }
+    if (/^\s*(monsieur|madame|mme|mlle|m\.)\s/.test(n)) { skip = 3; continue; }
+    if (/adresse du salari|domicile/.test(n)) continue;
+    let l = raw
+      .replace(/(pr[ée]nom|nom(?: de naissance| d'usage)?)\s*:\s*[^\s].*?(?=\s{3}|$)/gi, "$1 : [masqué]")
+      .replace(/(s[ée]curit[ée] sociale|n°\s*ss|nir)\s*:?\s*[\d\s]{13,}/gi, "$1 : [masqué]")
+      .replace(/\b[12]\s?\d{2}\s?\d{2}\s?(\d{2}|2A|2B)\s?\d{3}\s?\d{3}(\s?\d{2})?\b/gi, "[n° sécu masqué]")
+      .replace(/\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){3,7}(?:\s?[A-Z0-9]{1,3})?\b/g, "[IBAN masqué]")
+      .replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "[e-mail masqué]")
+      .replace(/\b0\d(?:[ .]?\d{2}){4}\b/g, "[téléphone masqué]")
+      .replace(/(n[ée]e? le|date de naissance)\s*:?\s*\d{1,2}\/\d{1,2}\/\d{2,4}/gi, "$1 [masqué]")
+      .replace(/(matricule)\s*:?\s*\S+/gi, "$1 : [masqué]");
+    for (const t of toks) l = l.replace(new RegExp("\\b" + t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "gi"), "[masqué]");
+    out.push(l);
   }
   return out.join("\n");
 }
@@ -1447,6 +1465,13 @@ $("months").addEventListener("click", (e) => {
 $("btn-paste").addEventListener("click", () => { $("paste-box").hidden = !$("paste-box").hidden; if (!$("paste-box").hidden) $("paste-area").focus(); });
 $("btn-analyse-paste").addEventListener("click", () => { const t = $("paste-area").value; if (t.trim()) analyse(t, "Texte collé analysé. Vérifie les chiffres lus ci-dessous."); });
 $("btn-example").addEventListener("click", () => { STATE.docs = []; analyse(EXAMPLE, "Exemple fictif chargé : ce ne sont pas tes chiffres. Dépose tes propres fiches pour les analyser.", "example", "Exemple"); });
+$("btn-clear").addEventListener("click", () => {
+  if (AI.busy) AI.ctl?.abort();
+  STATE.docs = []; AI.turns = []; AI.html = []; aiRender(); $("ai-ask").hidden = true;
+  $("paste-area").value = ""; $("ai-question").value = ""; $("ai-preview").textContent = ""; $("report-fallback").value = ""; $("report-fallback").hidden = true;
+  STATE.units = {}; store.set("units", {});
+  analyse(EXAMPLE, "Tout est effacé de cette page (fiches, chiffres, analyses, montants des paniers). L'exemple fictif est affiché.", "example", "Exemple");
+});
 $("btn-copy").addEventListener("click", () => {
   const t = reportText();
   const fallback = () => { const ta = $("report-fallback"); ta.hidden = false; ta.value = t; ta.select(); $("copied").textContent = "Sélectionne le texte et copie-le."; };
