@@ -161,6 +161,7 @@ footer.legal strong { color: var(--fg); }
 .weeks { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px 12px; }
 .hint.conv { font-family: var(--font-num); color: var(--accent); min-height: 1em; }
 .weeks input { font: 16px var(--font-num); padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); width: 100%; }
+#ccn-select { font: 14px var(--font-body); padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); width: 100%; max-width: 100%; }
 #week-entree, #week-mode { font: 14px var(--font-body); padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); }
 .indem { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px 12px; align-items: center; }
 .indem .h { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
@@ -238,6 +239,20 @@ table.multi td.n { font-family: var(--font-num); text-align: right; }
     </div>
     <div class="panel">
       <div class="grid-form" id="form"></div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="h-ccn">
+    <div class="section-head"><h2 id="h-ccn">Ta convention collective</h2><div class="counts" id="count-ccn"></div></div>
+    <div class="panel">
+      <p id="ccn-detect"></p>
+      <label class="field" for="ccn-select"><span class="small"><b>Convention</b></span><select id="ccn-select"></select></label>
+      <p class="muted small" id="ccn-link"></p>
+      <details>
+        <summary class="small"><b>Règles de ta convention</b> (à remplir une fois, gardées sur cet appareil)</summary>
+        <div class="grid-form" id="ccn-rules" style="margin-top:12px"></div>
+      </details>
+      <ul class="checks" id="checks-ccn"></ul>
     </div>
   </section>
 
@@ -936,7 +951,8 @@ function checkCalculs(v, P) {
         parts.push("Taux appliqué " + eur(it.unit) + " par heure, attendu " + eur(base) + " × " + String(mult).replace(".", ",") + " = <b>" + eur(exp) + "</b>" + (it.unit < exp ? " : manque ≈ " + eur(r2((exp - it.unit) * it.hours)) + "." : "."));
       } else parts.push(fh(it.hours) + " × " + eur(it.unit) + " (" + eur(base) + " majoré de " + it.rate + " %) = " + eur(it.amount) + " ✓");
     } else if (it.amount != null) parts.push(fh(it.hours) + " pour " + eur(it.amount) + (it.hours ? " (soit " + eur(it.amount / it.hours) + " de l'heure)" : "") + ".");
-    if (!it.compl && it.rate < 25 && !it.majOnly) { if (s === "ok") s = "warn"; parts.push("Majoration de " + it.rate + " % : en dessous de 25 %, c'est légal seulement si un accord d'entreprise ou de branche le prévoit (jamais moins de 10 %)."); }
+    { const RC = curRules(); const low = Math.min(RC.r1, RC.r2);
+      if (!it.compl && !it.majOnly && it.rate < low) { if (s === "ok") s = (RC.r1 !== 25 ? "bad" : "warn"); parts.push("Majoration de " + it.rate + " % : " + (RC.r1 !== 25 ? "ta convention prévoit au moins " + low + " %." : "en dessous de 25 %, c'est légal seulement si un accord d'entreprise ou de branche le prévoit (jamais moins de 10 %).")); } }
     if (it.compl && it.rate < 10) { s = "bad"; parts.push("Les heures complémentaires doivent être majorées d'au moins 10 %."); }
     out.push({ s, t: kind + " à " + it.rate + " %", d: parts.join(" "), src: it.line });
   }
@@ -1290,6 +1306,7 @@ function selectDoc(i) {
   renderLines(d.lines);
   renderIndemForm();
   renderWeeksForm();
+  renderCCN();
   $("cp-pris").value = d.cpPris != null ? String(d.cpPris).replace(".", ",") : "";
   $("cp-entree").value = STATE.entree || "";
   renderMonths();
@@ -1427,7 +1444,8 @@ function computeWeeks(d) {
   else filled.forEach((x) => groups.push([x]));
   for (const g of groups) {
     const tot = g.reduce((a, x) => a + x.h, 0);
-    const base = 35 * g.length, band = 8 * g.length;
+    const RR = rulesOf(d);
+    const base = 35 * g.length, band = (RR.band || 8) * g.length;
     const hs = Math.max(0, tot - base);
     const a = Math.min(hs, band), b = Math.max(0, hs - band);
     let c1 = 0, c2 = 0;
@@ -1467,14 +1485,14 @@ function checkWeeks(d, v) {
     const el = $("week-entree-info"), P = parsePeriod(d), e = entryDate();
     if (el) el.textContent = !e ? "" : !P ? "Période de la fiche non lue : date non utilisée" : (e > P.from && e <= P.to) ? "✓ prise en compte : base " + fh(W ? W.baseM : (prorata(d, STATE.contrat || 35) || {}).b1) : (e <= P.from ? "✓ embauché avant ce mois : base complète" : "Date après la fin de cette fiche");
   }
-  $("weeks-sum").textContent = W ? "Heures travaillées : " + fh(W.worked) + " · Heures à payer : " + fh(W.expectedPaid) + " (base " + (W.prorata ? "proratisée " : "") + fh(W.baseM) + (W.hc ? " + " + fh(W.hc) + " compl." : "") + " + " + fh(W.hs) + " sup : " + fh(W.h25) + " à 25 %, " + fh(W.h50) + " à 50 %)" : "";
+  $("weeks-sum").textContent = W ? "Heures travaillées : " + fh(W.worked) + " · Heures à payer : " + fh(W.expectedPaid) + " (base " + (W.prorata ? "proratisée " : "") + fh(W.baseM) + (W.hc ? " + " + fh(W.hc) + " compl." : "") + " + " + fh(W.hs) + " sup : " + fh(W.h25) + " à " + rulesOf(d).r1 + " %, " + fh(W.h50) + " à " + rulesOf(d).r2 + " %)" : "";
   if (!W) { out.push({ s: "info", t: "Note tes heures de chaque semaine", d: "Par exemple 50 ; 42 ; 38,75 ; 47,50 (tu peux aussi les taper en heures-minutes, la conversion s'affiche sous la case). L'outil calcule les heures sup que tu aurais dû être payé et les compare avec la fiche." }); return out; }
-  const tag = (x) => [x.c1 && fh(x.c1) + " compl. à 10 %", x.c2 && fh(x.c2) + " compl. à 25 %", x.a && fh(x.a) + " sup à 25 %", x.b && fh(x.b) + " sup à 50 %"].filter(Boolean).join(" + ");
+  const tag = (x) => [x.c1 && fh(x.c1) + " compl. à 10 %", x.c2 && fh(x.c2) + " compl. à 25 %", x.a && fh(x.a) + " sup à " + rulesOf(d).r1 + " %", x.b && fh(x.b) + " sup à " + rulesOf(d).r2 + " %"].filter(Boolean).join(" + ");
   const calN = weekCalendar(d);
   if (calN) W.detail.forEach((x) => { x.label = x.label.replace(/S(\d+)/g, (_, n) => { const k = calN.weeks[+n - 1]; return k ? dm(k.inFrom) + "→" + dm(k.inTo) : "S" + n; }); });
   out.push({ s: "info", t: "Ce que tu as noté", d: W.detail.map((x) => x.label + " : " + fh(x.tot) + "" + (tag(x) ? " → " + tag(x) : "")).join(" · ") + "." });
   {
-    const hsTxt = W.hs ? fh(W.hs) + " d'heures sup (" + fh(W.h25) + " à 25 % et " + fh(W.h50) + " à 50 %)" : "aucune heure sup";
+    const hsTxt = W.hs ? fh(W.hs) + " d'heures sup (" + fh(W.h25) + " à " + rulesOf(d).r1 + " % et " + fh(W.h50) + " à " + rulesOf(d).r2 + " %)" : "aucune heure sup";
     out.push({ s: "info", t: "Ce qui doit être payé : " + fh(W.expectedPaid), d:
       "<b>1. Le salaire de base : " + fh(W.baseM) + "</b>" + (W.prorata ? " (151,67 h − " + fh(W.prorata.lostH) + " pour " + W.prorata.days.join(", ") + ", jours avant ton embauche)" : " (35 h × 52 semaines ÷ 12)") + ". Il paie toutes tes heures jusqu'à " + fh(W.C) + " par semaine, quel que soit leur nombre exact dans le mois." + (W.prorata ? " Les heures faites le jour de l'embauche et les semaines incomplètes sont dedans." : "") + "<br>" +
       "<b>2. Les heures sup : " + (W.hs ? fh(W.hs) : "0,00 h") + "</b>, comptées semaine par semaine au-delà de " + fh(W.C) + " : " + hsTxt + ".<br>" +
@@ -1490,13 +1508,14 @@ function checkWeeks(d, v) {
   }
   const h25 = v.hs25 || 0, h50 = v.hs50 || 0, paidHS = h25 + h50;
   const T = v.taux || (v.brut && v.heures ? v.brut / (v.heures + h25 * 0.25 + h50 * 0.5) : null);
-  const money = (a, b) => T ? r2(T * (a * 1.25 + b * 1.5)) : null;
+  const RW = rulesOf(d), m1 = 1 + RW.r1 / 100, m2 = 1 + RW.r2 / 100;
+  const money = (a, b) => T ? r2(T * (a * m1 + b * m2)) : null;
   const miss = r2(W.hs - paidHS);
   if (v.hs25 == null && v.hs50 == null && W.hs > 0) {
     out.push({ s: "bad", t: "Heures sup absentes de la fiche", d: "Tu as noté " + fh(W.hs) + " sup, mais la fiche n'indique aucune heure majorée." + (T ? " Montant en jeu ≈ <b>" + eur(money(W.h25, W.h50)) + "</b> brut." : "") + " Vérifie aussi que le total d'heures payées les inclut." });
   } else if (miss > 0.1) {
     const m25 = Math.max(0, W.h25 - h25), m50 = Math.max(0, W.h50 - h50);
-    out.push({ s: "bad", t: "Il manque " + fh(miss) + " sup sur la fiche", d: "Selon tes heures : " + fh(W.h25) + " à 25 % et " + fh(W.h50) + " à 50 %. La fiche paie " + fh(h25) + " à 25 % et " + fh(h50) + " à 50 %." + (T ? " Manque estimé ≈ <b>" + eur(money(m25, m50)) + " brut</b> (taux horaire ≈ " + eur(T) + ")." : "") + " Demande à ton employeur son décompte d'heures semaine par semaine." });
+    out.push({ s: "bad", t: "Il manque " + fh(miss) + " sup sur la fiche", d: "Selon tes heures : " + fh(W.h25) + " à " + rulesOf(d).r1 + " % et " + fh(W.h50) + " à " + rulesOf(d).r2 + " %. La fiche paie " + fh(h25) + " à " + rulesOf(d).r1 + " % et " + fh(h50) + " à " + rulesOf(d).r2 + " %." + (T ? " Manque estimé ≈ <b>" + eur(money(m25, m50)) + " brut</b> (taux horaire ≈ " + eur(T) + ")." : "") + " Demande à ton employeur son décompte d'heures semaine par semaine." });
   } else if (miss < -0.1) {
     out.push({ s: "info", t: "La fiche paie " + fh(-miss) + " sup de plus que ton décompte", d: "Ton décompte donne " + fh(W.hs) + " sup, la fiche en paie " + fh(paidHS) + ". Vérifie qu'il ne manque pas une semaine dans ta saisie (une semaine à cheval sur deux mois est en général payée avec le mois où elle se termine)." });
   } else {
@@ -1504,7 +1523,7 @@ function checkWeeks(d, v) {
   }
   if (Math.abs(miss) <= 0.1 && (Math.abs(W.h50 - h50) > 0.1)) {
     const diff = r2(W.h50 - h50);
-    out.push({ s: diff > 0 ? "bad" : "info", t: "Mauvaise répartition 25 % / 50 %", d: "Le total d'heures sup est juste, mais " + (diff > 0 ? fh(diff) + " devraient être majorées à 50 % au lieu de 25 %" + (T ? " : manque ≈ <b>" + eur(r2(diff * T * 0.25)) + " brut</b>." : ".") : "la fiche met plus d'heures à 50 % que ton décompte (à ton avantage).") + " Au-delà de 43 h dans une semaine, c'est +50 % (sauf accord prévoyant autre chose, jamais moins de +10 %)." });
+    out.push({ s: diff > 0 ? "bad" : "info", t: "Mauvaise répartition " + RW.r1 + " % / " + RW.r2 + " %", d: "Le total d'heures sup est juste, mais " + (diff > 0 ? fh(diff) + " devraient être majorées à " + RW.r2 + " % au lieu de " + RW.r1 + " %" + (T ? " : manque ≈ <b>" + eur(r2(diff * T * (RW.r2 - RW.r1) / 100)) + " brut</b>." : ".") : "la fiche met plus d'heures à 50 % que ton décompte (à ton avantage).") + " Au-delà de 43 h dans une semaine, c'est +50 % (sauf accord prévoyant autre chose, jamais moins de +10 %)." });
   }
   const absH = curDoc() && curDoc().f._absHours || 0;
   if (absH && W.prorata && Math.abs(absH - W.prorata.lostH) <= 0.5) out.push({ s: "ok", t: "Retenue d'entrée de la fiche : " + fh(absH) + " ✓", d: "La fiche retire " + fh(absH) + " pour les jours avant ton arrivée (" + W.prorata.days.join(", ") + "), comme le calcul de l'appli : 151,67 h − " + fh(absH) + " = " + fh(W.baseM) + ". Ces heures ne sont pas retirées une deuxième fois." });
@@ -1581,6 +1600,153 @@ function checkCP(d, v) {
     const est = cpAcquiredEstimate(d);
     out.push({ s: "warn", t: "Pas de compteur de congés (acquis N-1, N, pris, solde)", d: "La fiche n'indique pas combien de jours de congé tu as. La loi n'oblige pas à mettre ces compteurs sur la fiche, mais presque tous les logiciels de paie le font, et ton employeur doit pouvoir te dire tes droits. <b>Demande-lui ton solde par écrit.</b> Repère : tu gagnes 2,5 jours ouvrables par mois de travail (30 jours, soit 5 semaines par an), y compris pendant un arrêt maladie (2 jours par mois en maladie non professionnelle)." + (est ? " Estimation pour la période en cours (depuis le " + est.from.toLocaleDateString("fr-FR") + ") : environ <b>" + est.days.toLocaleString("fr-FR") + " jours acquis</b>" + (STATE.entree ? "" : " si tu étais déjà dans l'entreprise au 1er juin (indique ta date d'entrée pour affiner)") + ", plus ce qui restait de l'année précédente (N-1)." : "") });
   } else out.push({ s: "ok", t: "Compteur de congés présent", d: "Compare-le avec tes propres comptes : 2,5 jours ouvrables par mois travaillé." });
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
+/* Conventions collectives                                             */
+/* Reconnaissance (IDCC) + règles saisies par l'utilisateur.           */
+/* Aucun montant conventionnel n'est inventé : ils changent souvent.   */
+/* ------------------------------------------------------------------ */
+const CCN_LIST = [
+  [16, "Transports routiers et activités auxiliaires du transport (dont transport sanitaire / ambulanciers)", /transports? routiers?|activites auxiliaires du transport|ambulan|transport sanitaire|n.?\s?3085/],
+  [1486, "Bureaux d'études techniques, ingénieurs-conseils (Syntec)", /syntec|bureaux d.etudes techniques|ingenieurs[- ]conseils/],
+  [1979, "Hôtels, cafés, restaurants (HCR)", /hotels?,? cafes?,? restaurants?|\bhcr\b/],
+  [1501, "Restauration rapide", /restauration rapide/],
+  [1266, "Restauration de collectivités", /restauration (de|des) collectivites/],
+  [2216, "Commerce de détail et de gros à prédominance alimentaire", /predominance alimentaire/],
+  [1517, "Commerce de détail non alimentaire", /commerces? de detail non alimentaire/],
+  [1505, "Commerce de détail de fruits et légumes, épicerie et produits laitiers", /fruits et legumes,? epicerie/],
+  [573, "Commerces de gros", /commerces? de gros(?!.*alimentaire)/],
+  [1483, "Commerce de détail de l'habillement et des articles textiles", /detail de l.habillement/],
+  [675, "Maisons à succursales de vente au détail d'habillement", /succursales de vente au detail d.habillement/],
+  [1606, "Bricolage (vente au détail en libre-service)", /bricolage/],
+  [1557, "Commerce des articles de sport et équipements de loisirs", /articles de sport/],
+  [1880, "Négoce de l'ameublement", /negoce de l.ameublement/],
+  [2198, "Vente à distance", /vente a distance/],
+  [3248, "Métallurgie", /metallurgie/],
+  [44, "Industries chimiques", /industries? chimiques?/],
+  [176, "Industrie pharmaceutique", /industrie pharmaceutique/],
+  [1996, "Pharmacie d'officine", /pharmacie d.officine/],
+  [3109, "Industries alimentaires diverses (5 branches)", /industries alimentaires diverses|5 branches/],
+  [843, "Boulangerie-pâtisserie (entreprises artisanales)", /boulangerie.?patisserie.*artisan|artisan.*boulangerie/],
+  [1747, "Activités industrielles de boulangerie et pâtisserie", /industrielles de boulangerie/],
+  [1596, "Bâtiment – ouvriers (jusqu'à 10 salariés)", /batiment.*ouvriers.*(10 salaries|jusqu.a 10)|ouvriers.*batiment.*(10 salaries|jusqu.a 10)/],
+  [1597, "Bâtiment – ouvriers (plus de 10 salariés)", /batiment.*ouvriers.*plus de 10|ouvriers.*batiment.*plus de 10/],
+  [2609, "Bâtiment – ETAM", /batiment.*etam|etam.*batiment/],
+  [2420, "Bâtiment – cadres", /cadres du batiment/],
+  [1702, "Travaux publics – ouvriers", /travaux publics/],
+  [1090, "Services de l'automobile", /services de l.automobile/],
+  [1424, "Transports publics urbains de voyageurs", /transports publics urbains/],
+  [275, "Transport aérien – personnel au sol", /transport aerien/],
+  [3017, "Ports et manutention", /ports et manutention|manutention portuaire/],
+  [1351, "Prévention et sécurité", /prevention et securite/],
+  [3043, "Entreprises de propreté et services associés", /entreprises de proprete/],
+  [2002, "Blanchisserie, laverie, location de linge, nettoyage à sec", /blanchisserie/],
+  [2264, "Hospitalisation privée (FHP)", /hospitalisation privee(?!.*non lucratif)/],
+  [29, "Établissements privés d'hospitalisation, de soins, de cure et de garde à but non lucratif (FEHAP, CCN 51)", /fehap|but non lucratif.*(hospitalisation|soins)|ccn 51/],
+  [413, "Établissements et services pour personnes inadaptées et handicapées (CCN 66)", /personnes inadaptees|ccn 66|convention.*1966/],
+  [2941, "Aide, accompagnement, soins et services à domicile (BAD)", /aide,? (de l.)?accompagnement.*domicile|branche de l.aide a domicile/],
+  [3127, "Entreprises de services à la personne", /services a la personne/],
+  [3239, "Particuliers employeurs et emploi à domicile", /particuliers? employeurs?/],
+  [1147, "Cabinets médicaux", /cabinets? medicaux/],
+  [1875, "Cabinets et cliniques vétérinaires (personnel salarié)", /veterinaires?/],
+  [1516, "Organismes de formation", /organismes? de formation/],
+  [2098, "Prestataires de services du secteur tertiaire", /prestataires de services/],
+  [2511, "Sport", /convention collective nationale du sport|\bsport\b(?!.*articles)/],
+  [2596, "Coiffure", /coiffure/],
+  [2120, "Banque", /\bbanques?\b/],
+  [1672, "Sociétés d'assurances", /societes d.assurances/],
+  [2247, "Courtage d'assurances et de réassurances", /courtage d.assurances/],
+  [1527, "Immobilier", /\bimmobilier\b/],
+  [1043, "Gardiens, concierges et employés d'immeubles", /gardiens,? concierges/],
+  [787, "Cabinets d'experts-comptables et de commissaires aux comptes", /experts?[- ]comptables/],
+  [2205, "Notariat", /notariat/],
+  [1000, "Cabinets d'avocats (personnel salarié)", /cabinets? d.avocats/],
+  [2332, "Entreprises d'architecture", /architecture/],
+];
+const CCN_DEFAULT_RULES = { minH: null, minM: null, r1: 25, r2: 50, band: 8, anc: null, ancAns: null, nuit: null, dim: null };
+STATE.ccnRules = store.get("ccnRules", {});
+
+function detectCCN(text) {
+  const n = norm(text);
+  let m = n.match(/\bidcc\s*(?:n.?\s*)?:?\s*(\d{1,4})\b/);
+  if (m) { const id = +m[1]; const k = CCN_LIST.find((c) => c[0] === id); return { idcc: id, name: k ? k[1] : "Convention IDCC " + id, how: "numéro IDCC lu sur la fiche" }; }
+  const line = (text.split("\n").find((l) => /convention collective|\bccn\b/i.test(norm(l))) || "");
+  const around = norm(line + " " + text.split("\n").slice(text.split("\n").indexOf(line) + 1, text.split("\n").indexOf(line) + 3).join(" "));
+  for (const [id, name, re] of CCN_LIST) if (re.test(around)) return { idcc: id, name, how: "intitulé lu sur la fiche" };
+  for (const [id, name, re] of CCN_LIST) if (re.test(n)) return { idcc: id, name, how: "mot-clé trouvé sur la fiche (à confirmer)" };
+  if (line) return { idcc: null, name: line.replace(/.*convention collective\s*:?\s*/i, "").trim() || "non reconnue", how: "intitulé non reconnu" };
+  return null;
+}
+function ccnOf(d) {
+  if (!d) return null;
+  if (d.ccnChoice !== undefined) return d.ccnChoice;
+  if (d._ccn === undefined) d._ccn = detectCCN(d.text);
+  return d._ccn;
+}
+function ccnKey(d) { const c = ccnOf(d); return c && c.idcc ? String(c.idcc) : "autre"; }
+function rulesOf(d) { return Object.assign({}, CCN_DEFAULT_RULES, STATE.ccnRules[ccnKey(d)] || {}); }
+function curRules() { return rulesOf(curDoc()); }
+
+const CCN_FIELDS = [
+  ["minH", "Salaire minimum de ton coefficient : taux horaire brut (€)", "Grille de salaires de ta convention, pour ton niveau / coefficient"],
+  ["minM", "… ou minimum mensuel brut pour 151,67 h (€)", "Si ta grille donne un salaire mensuel"],
+  ["r1", "Majoration des premières heures sup (%)", "25 % par défaut, un accord peut prévoir moins (jamais sous 10 %)"],
+  ["band", "Nombre d'heures sup au 1er taux par semaine", "8 par défaut (de la 36e à la 43e heure)"],
+  ["r2", "Majoration des heures sup suivantes (%)", "50 % par défaut"],
+  ["anc", "Prime d'ancienneté (% du salaire de base)", "Laisse vide si ta convention n'en prévoit pas"],
+  ["ancAns", "… à partir de combien d'années d'ancienneté", "Ex. 3"],
+  ["nuit", "Majoration des heures de nuit (%)", "Facultatif"],
+  ["dim", "Majoration du dimanche / jour férié (%)", "Facultatif"],
+];
+function renderCCN() {
+  const d = curDoc(); if (!d) return;
+  const c = ccnOf(d), R = rulesOf(d);
+  const opts = ['<option value="">— Choisir ta convention —</option>'].concat(CCN_LIST.map(([id, name]) => `<option value="${id}"${c && c.idcc === id ? " selected" : ""}>${esc(name)} (IDCC ${id})</option>`)).concat([`<option value="autre"${c && !c.idcc ? " selected" : ""}>Autre convention</option>`]);
+  $("ccn-select").innerHTML = opts.join("");
+  $("ccn-detect").innerHTML = c
+    ? (c.idcc ? "Convention reconnue : <b>" + esc(c.name) + "</b> (IDCC " + c.idcc + "), " + esc(c.how) + "." : "Convention indiquée sur la fiche : <b>" + esc(c.name) + "</b> (non reconnue : choisis-la dans la liste).")
+    : "Aucune convention collective trouvée sur la fiche (c'est pourtant une mention obligatoire). Choisis-la dans la liste si tu la connais.";
+  $("ccn-link").innerHTML = 'Trouve les chiffres officiels de ta convention (grille de salaires, primes, paniers) sur <a href="https://code.travail.gouv.fr/outils/convention-collective" target="_blank" rel="noopener">code.travail.gouv.fr</a> ou <a href="https://www.legifrance.gouv.fr/liste/idcc" target="_blank" rel="noopener">Légifrance</a>' + (c && c.idcc ? " (recherche « IDCC " + c.idcc + " »)" : "") + ". Prends la grille la plus récente : les montants changent souvent.";
+  $("ccn-rules").innerHTML = CCN_FIELDS.map(([k, lab, hint]) => `<div class="field"><label for="cr-${k}">${lab}</label><input id="cr-${k}" inputmode="decimal" autocomplete="off" value="${R[k] != null && !(CCN_DEFAULT_RULES[k] === R[k] && !(STATE.ccnRules[ccnKey(d)] || {})[k]) ? String(R[k]).replace(".", ",") : ""}" placeholder="${CCN_DEFAULT_RULES[k] != null ? String(CCN_DEFAULT_RULES[k]).replace(".", ",") : ""}"><span class="hint">${hint}</span></div>`).join("");
+  CCN_FIELDS.forEach(([k]) => $("cr-" + k).addEventListener("input", (e) => {
+    const key = ccnKey(curDoc()); const cur = STATE.ccnRules[key] || {};
+    const v = toNum(e.target.value || ""); if (e.target.value.trim() === "" || isNaN(v)) delete cur[k]; else cur[k] = v;
+    STATE.ccnRules[key] = cur; store.set("ccnRules", STATE.ccnRules); recompute();
+  }));
+}
+function checkCCN(d, v) {
+  const out = [], c = ccnOf(d), R = rulesOf(d), set = STATE.ccnRules[ccnKey(d)] || {};
+  const filled = Object.keys(set).length > 0;
+  if (!c || !c.idcc) out.push({ s: "info", t: "Choisis ta convention collective", d: "Elle fixe ton salaire minimum, tes majorations, tes primes et tes paniers. Sans elle, l'appli applique les règles générales du Code du travail." });
+  if (!filled) out.push({ s: "info", t: "Règles de ta convention non renseignées", d: "Remplis au moins le <b>salaire minimum de ton coefficient</b> (grille de ta convention). Tant que c'est vide, l'appli vérifie seulement le SMIC et les majorations légales (25 % puis 50 %)." });
+  const hsF = (v.hs25 || 0) + (v.hs50 || 0) + (v.hc10 || 0) + (v.hc25 || 0);
+  const T = v.taux || (v.brut && v.heures ? v.brut / (v.heures + (v.hs25 || 0) * R.r1 / 100 + (v.hs50 || 0) * R.r2 / 100) : null);
+  const estimated = !v.taux;
+  if (R.minH && T) {
+    out.push(T + 0.005 >= R.minH
+      ? { s: "ok", t: "Au-dessus du minimum de ta convention", d: (estimated ? "Taux horaire estimé ≈ " : "Taux horaire ") + eur(T) + " ≥ minimum conventionnel " + eur(R.minH) + "." }
+      : { s: estimated ? "warn" : "bad", t: "En dessous du minimum de ta convention", d: (estimated ? "Taux horaire estimé ≈ " : "Taux horaire ") + eur(T) + " < minimum de ta grille " + eur(R.minH) + ". Écart ≈ " + eur(r2((R.minH - T) * ((v.heures || 151.67) - hsF))) + " brut sur la base du mois." + (estimated ? " (Estimation : indique ton taux horaire exact dans « Les chiffres lus » pour confirmer.)" : "") });
+  }
+  if (R.minM) {
+    const baseM = v.base != null && v.hBase != null && near(v.hBase, 151.67, 0.05) ? v.base : (T ? r2(T * 151.67) : null);
+    if (baseM != null) out.push(baseM + 0.5 >= R.minM
+      ? { s: "ok", t: "Salaire de base au niveau du minimum conventionnel", d: "Base pour 151,67 h ≈ " + eur(baseM) + " ≥ " + eur(R.minM) + "." }
+      : { s: "bad", t: "Salaire de base sous le minimum conventionnel", d: "Base pour 151,67 h ≈ " + eur(baseM) + " < minimum de ta grille " + eur(R.minM) + " (écart ≈ " + eur(r2(R.minM - baseM)) + " par mois)." });
+  }
+  if (R.r1 !== 25 || R.r2 !== 50 || R.band !== 8) out.push({ s: "info", t: "Majorations de ta convention appliquées", d: "Heures sup : " + R.r1 + " % pour les " + R.band + " premières heures de la semaine, puis " + R.r2 + " %. Utilisé dans le calcul semaine par semaine et la vérification des lignes d'heures sup." });
+  if (R.anc && R.ancAns != null) {
+    const e = entryDate(), P = parsePeriod(d);
+    if (e && P) {
+      const years = (P.to - e) / (365.25 * 86400000);
+      const has = /anciennete/.test(norm(d.text));
+      if (years >= R.ancAns) out.push(has ? { s: "ok", t: "Prime d'ancienneté présente", d: "Tu as " + years.toFixed(1).replace(".", ",") + " ans d'ancienneté : vérifie qu'elle fait bien " + R.anc + " % de ta base." }
+        : { s: "bad", t: "Prime d'ancienneté absente", d: "Tu as " + years.toFixed(1).replace(".", ",") + " ans d'ancienneté, ta convention prévoit " + R.anc + " % à partir de " + R.ancAns + " ans" + (v.base ? " (≈ " + eur(r2(v.base * R.anc / 100)) + ")" : "") + ", mais aucune ligne « ancienneté » n'apparaît." });
+      else out.push({ s: "info", t: "Prime d'ancienneté pas encore due", d: "Ancienneté " + years.toFixed(1).replace(".", ",") + " an(s), prime à partir de " + R.ancAns + " ans." });
+    } else out.push({ s: "info", t: "Prime d'ancienneté", d: "Indique ta date d'embauche (section heures ou congés) pour vérifier si elle est due." });
+  }
+  if (R.nuit || R.dim) out.push({ s: "info", t: "Majorations nuit / dimanche", d: "Ta convention : " + [R.nuit && "nuit +" + R.nuit + " %", R.dim && "dimanche / férié +" + R.dim + " %"].filter(Boolean).join(", ") + ". " + (/nuit|dimanche|ferie/.test(norm(d.text)) ? "Des lignes correspondantes apparaissent sur la fiche : vérifie le nombre d'heures et le taux." : "Aucune ligne de nuit, dimanche ou férié sur la fiche : si tu en as fait, elles doivent apparaître.") });
   return out;
 }
 
@@ -1670,6 +1836,8 @@ function recompute() {
   const indem = d ? checkIndem(d, v) : [];
   const sem = d ? checkWeeks(d, v) : [];
   const cp = d ? checkCP(d, v) : [];
+  const ccnChecks = d ? checkCCN(d, v) : [];
+  renderChecks("checks-ccn", "count-ccn", ccnChecks);
   renderChecks("checks-cp", "count-cp", cp);
   renderChecks("checks-sem", "count-sem", sem);
   renderChecks("checks-calc", "count-calc", calc);
@@ -1677,7 +1845,7 @@ function recompute() {
   renderChecks("checks-mentions", "count-mentions", ment);
   renderChecks("checks-indem", "count-indem", indem);
   renderMulti(P);
-  STATE.results = { calc, cotis, ment, indem, sem, cp, v };
+  STATE.results = { calc, cotis, ment, indem, sem, cp, ccn: ccnChecks, v };
 }
 
 function analyse(text, msg, kind, name) {
@@ -1837,7 +2005,7 @@ function reportText() {
     "Analyse de ma fiche de paie" + ($("periode-lue").textContent ? " (" + $("periode-lue").textContent + ")" : ""),
     "",
     "Points à vérifier :",
-    bad(R.calc.concat(R.sem || [], R.cp || [], R.cotis, R.indem)) || "- aucun",
+    bad(R.calc.concat(R.ccn || [], R.sem || [], R.cp || [], R.cotis, R.indem)) || "- aucun",
     multi ? "\nSur plusieurs mois :\n" + multi : "",
     "",
     "Mentions obligatoires (art. R3243-1 du Code du travail) que je ne trouve pas :",
@@ -1897,6 +2065,7 @@ function buildDataBlock() {
       "Texte extrait du PDF (anonymisé) :\n" + anonymize(d.text).slice(0, 14000) + "\n\n" +
       "Chiffres retenus (lus automatiquement puis éventuellement corrigés par le salarié) :\n" + vals + "\n" +
       "Situation : " + flags + "\n" +
+      (() => { const c = ccnOf(d), RR = rulesOf(d), set = STATE.ccnRules[ccnKey(d)] || {}; return "Convention collective : " + (c ? c.name + (c.idcc ? " (IDCC " + c.idcc + ")" : "") : "non trouvée") + ". Règles saisies par le salarié : " + (Object.keys(set).length ? CCN_FIELDS.filter(([k]) => set[k] != null).map(([k, lab]) => lab.replace(/ \(.*$/, "") + " = " + set[k]).join(" ; ") : "aucune (règles légales par défaut)") + ".\n"; })() +
       wk + "Jours de congé pris ce mois selon le salarié : " + (d.cpPris || 0) + (STATE.entree ? " ; date d'entrée : " + STATE.entree : "") + ".\n" + (indem ? "Décompte du salarié pour ses indemnités ce mois-ci :\n" + indem + "\n" : "Le salarié n'a pas indiqué son décompte de paniers pour ce mois.\n");
   }).join("\n\n") + "\n\nParamètres utilisés par l'outil : SMIC horaire " + eur(P.smic) + ", PMSS " + eur(P.pmss) + ".";
 }
@@ -1905,7 +2074,7 @@ function localFindings() {
   const strip = (h) => h.replace(/<[^>]+>/g, "");
   const list = (arr) => arr.filter((c) => c.s !== "ok").map((c) => "- [" + STATUS_LABEL[c.s] + "] " + c.t + " : " + strip(c.d)).join("\n");
   const multi = Array.from(document.querySelectorAll("#checks-multi li")).map((li) => "- " + li.querySelector(".title").textContent + " : " + li.querySelector(".detail").textContent).join("\n");
-  return "Constats de l'outil automatique pour la fiche affichée (" + curDoc().label + ") :\n" + list(R.calc.concat(R.sem || [], R.cp || [], R.cotis, R.indem, R.ment)) + (multi ? "\n\nConstats sur plusieurs mois :\n" + multi : "");
+  return "Constats de l'outil automatique pour la fiche affichée (" + curDoc().label + ") :\n" + list(R.calc.concat(R.ccn || [], R.sem || [], R.cp || [], R.cotis, R.indem, R.ment)) + (multi ? "\n\nConstats sur plusieurs mois :\n" + multi : "");
 }
 const AI_RULES = `Tu es un expert de la paie en France (règles 2026), au service d'un salarié qui a du mal à lire ses fiches de paie. Tu tutoies, tu écris en français simple, sans jargon (ou en l'expliquant).
 
@@ -1915,7 +2084,7 @@ Règles :
 - Écris les heures uniquement en centièmes (par exemple « 200,17 h », jamais « 200h10 ») et fais tous les calculs en centièmes (10 min = 0,17 h, 15 min = 0,25 h, 30 min = 0,50 h). Si la fiche les écrit en heures-minutes, convertis-les.
 - Vérifie les calculs toi-même (base × taux = montant, totaux, net avant impôt, net imposable, impôt, net payé, net social).
 - Vérifie les mentions obligatoires (art. R3243-1 du Code du travail, bulletin clarifié), le détail du brut, les heures (h/min ↔ centièmes), les heures supplémentaires (réduction de cotisations salariales sans plafond annuel ; exonération d'impôt plafonnée à 7 500 € par an), les indemnités et paniers (nature et montant obligatoires), les congés payés (dates et indemnité obligatoires s'ils sont pris dans le mois ; compteurs acquis/pris/solde ; acquisition de 2,5 jours ouvrables par mois), le montant net social (les remboursements de frais professionnels n'y entrent pas), les taux et la répartition des cotisations.
-- Tiens compte de la convention collective et de l'emploi indiqués sur la fiche. Si tu cites un montant de barème conventionnel (panier, minimum de salaire…), précise que c'est à confirmer dans le texte en vigueur si tu n'es pas certain du chiffre exact pour 2026. N'invente jamais un chiffre.
+- Tiens compte de la convention collective (nom et IDCC fournis) et de l'emploi indiqués sur la fiche. Les règles de convention saisies par le salarié (minimum, majorations, prime d'ancienneté…) priment sur tes connaissances générales ; signale-les si elles te paraissent incohérentes avec la convention. Si tu cites un montant de barème conventionnel (panier, minimum de salaire…), précise que c'est à confirmer dans le texte en vigueur si tu n'es pas certain du chiffre exact pour 2026. N'invente jamais un chiffre.
 - Si plusieurs mois sont fournis, compare-les (ce qui change d'un mois à l'autre, ce qui manque certains mois, cumuls).
 - Sépare bien ce qui est certain, ce qui est probable et ce qui est à vérifier. Chiffre les sommes en jeu quand c'est possible.
 - Les constats de l'outil automatique sont des pistes, pas des vérités : confirme-les ou corrige-les.
@@ -2031,7 +2200,7 @@ $("btn-clear").addEventListener("click", () => {
   if (AI.busy) AI.ctl?.abort();
   STATE.docs = []; AI.turns = []; AI.html = []; aiRender(); $("ai-ask").hidden = true;
   $("paste-area").value = ""; $("ai-question").value = ""; $("ai-preview").textContent = ""; $("report-fallback").value = ""; $("report-fallback").hidden = true;
-  STATE.units = {}; store.set("units", {}); STATE.weekMode = "week"; store.set("weekMode", "week"); STATE.contrat = 35; store.set("contrat", 35); STATE.entree = ""; store.set("entree", "");
+  STATE.units = {}; store.set("units", {}); STATE.weekMode = "week"; store.set("weekMode", "week"); STATE.contrat = 35; store.set("contrat", 35); STATE.entree = ""; store.set("entree", ""); STATE.ccnRules = {}; store.set("ccnRules", {});
   analyse(EXAMPLE, "Tout est effacé de cette page (fiches, chiffres, analyses, montants des paniers). L'exemple fictif est affiché.", "example", "Exemple");
 });
 $("btn-copy").addEventListener("click", () => {
@@ -2044,6 +2213,13 @@ const setEntree = (v) => { STATE.entree = v; store.set("entree", v); $("cp-entre
 ["input", "change", "blur"].forEach((ev) => {
   $("cp-entree").addEventListener(ev, (e) => { if (e.target.value !== STATE.entree) setEntree(e.target.value); });
   $("week-entree").addEventListener(ev, (e) => { if (e.target.value !== STATE.entree) setEntree(e.target.value); });
+});
+$("ccn-select").addEventListener("change", (e) => {
+  const v = e.target.value, d = curDoc();
+  if (!v) delete d.ccnChoice;
+  else if (v === "autre") d.ccnChoice = { idcc: null, name: "autre convention", how: "choisie par toi" };
+  else { const k = CCN_LIST.find((c) => String(c[0]) === v); d.ccnChoice = { idcc: k[0], name: k[1], how: "choisie par toi" }; }
+  renderCCN(); recompute();
 });
 $("week-add").addEventListener("click", () => { weeksOf(curDoc()).push(""); renderWeeksForm(); $("w-" + (curDoc().weeks.length - 1)).focus(); recompute(); });
 $("week-del").addEventListener("click", () => { const w = weeksOf(curDoc()); if (w.length > 1) { w.pop(); renderWeeksForm(); recompute(); } });
