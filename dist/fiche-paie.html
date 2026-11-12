@@ -251,7 +251,7 @@ table.multi td.n { font-family: var(--font-num); text-align: right; }
       <div class="btns">
         <button type="button" id="week-add">+ Ajouter une semaine</button>
         <button type="button" id="week-del">− Retirer la dernière</button>
-        <label class="field" for="week-entree" style="flex:0 1 190px"><span class="small"><b>Date d'embauche</b></span><input id="week-entree" type="date"></label>
+        <label class="field" for="week-entree" style="flex:0 1 230px"><span class="small"><b>Date d'embauche</b></span><input id="week-entree" type="date"><span class="hint conv" id="week-entree-info"></span></label>
         <label class="field" for="week-contrat" style="flex:0 1 170px"><span class="small"><b>Contrat (h/semaine)</b></span><input id="week-contrat" inputmode="decimal" value="35"></label>
         <label class="field" for="week-mode" style="flex:1 1 220px"><span class="small"><b>Décompte des heures sup</b></span>
           <select id="week-mode"><option value="week">Par semaine (règle générale)</option><option value="two">Sur 2 semaines (si un accord le prévoit)</option></select></label>
@@ -1705,7 +1705,9 @@ function frenchHolidays(y) {
   return new Set(list.map((x) => x.toDateString()));
 }
 const dm = (x) => String(x.getDate()).padStart(2, "0") + "/" + String(x.getMonth() + 1).padStart(2, "0");
-function entryDate() { if (!STATE.entree) return null; const e = new Date(STATE.entree + "T00:00:00"); return isNaN(e) ? null : e; }
+function entryDate() {
+  if (!STATE.entree) { const el = document.getElementById("week-entree") || document.getElementById("cp-entree"); const v = el && el.value; if (v) STATE.entree = v; }
+  if (!STATE.entree) return null; const e = new Date(STATE.entree + "T00:00:00"); return isNaN(e) ? null : e; }
 function weekCalendar(d) {
   const P = parsePeriod(d); if (!P) return null;
   const e = entryDate();
@@ -1791,6 +1793,10 @@ function checkWeeks(d, v) {
   const W = computeWeeks(d);
   const out = [];
   weeksOf(d).forEach((x, i) => { const el = $("wc-" + i); if (el) { const h = parseHours(x); el.textContent = h != null ? "= " + fhBoth(h) : ""; } });
+  {
+    const el = $("week-entree-info"), P = parsePeriod(d), e = entryDate();
+    if (el) el.textContent = !e ? "" : !P ? "Période de la fiche non lue : date non utilisée" : (e > P.from && e <= P.to) ? "✓ prise en compte : base " + fh(W ? W.baseM : (prorata(d, STATE.contrat || 35) || {}).b1) : (e <= P.from ? "✓ embauché avant ce mois : base complète" : "Date après la fin de cette fiche");
+  }
   $("weeks-sum").textContent = W ? "Heures travaillées : " + fh(W.worked) + " · Heures à payer : " + fh(W.expectedPaid) + " (base " + (W.prorata ? "proratisée " : "") + fh(W.baseM) + (W.hc ? " + " + fh(W.hc) + " compl." : "") + " + " + fh(W.hs) + " sup : " + fh(W.h25) + " à 25 %, " + fh(W.h50) + " à 50 %)" : "";
   if (!W) { out.push({ s: "info", t: "Note tes heures de chaque semaine", d: "Par exemple 50 ; 42 ; 38,75 ; 47,50 (tu peux aussi les taper en heures-minutes, la conversion s'affiche sous la case). L'outil calcule les heures sup que tu aurais dû être payé et les compare avec la fiche." }); return out; }
   const tag = (x) => [x.c1 && fh(x.c1) + " compl. à 10 %", x.c2 && fh(x.c2) + " compl. à 25 %", x.a && fh(x.a) + " sup à 25 %", x.b && fh(x.b) + " sup à 50 %"].filter(Boolean).join(" + ");
@@ -2372,9 +2378,11 @@ $("btn-copy").addEventListener("click", () => {
   try { navigator.clipboard.writeText(t).then(() => { $("copied").textContent = "Rapport copié."; }, fallback); } catch (e) { fallback(); }
 });
 $("cp-pris").addEventListener("input", (e) => { const v = toNum(e.target.value || ""); curDoc().cpPris = isNaN(v) ? null : v; recompute(); });
-const setEntree = (v) => { STATE.entree = v; store.set("entree", v); $("cp-entree").value = v; renderWeeksForm(); recompute(); };
-$("cp-entree").addEventListener("change", (e) => setEntree(e.target.value));
-$("week-entree").addEventListener("change", (e) => setEntree(e.target.value));
+const setEntree = (v) => { STATE.entree = v; store.set("entree", v); $("cp-entree").value = v; $("week-entree").value = v; renderWeeksForm(); recompute(); };
+["input", "change", "blur"].forEach((ev) => {
+  $("cp-entree").addEventListener(ev, (e) => { if (e.target.value !== STATE.entree) setEntree(e.target.value); });
+  $("week-entree").addEventListener(ev, (e) => { if (e.target.value !== STATE.entree) setEntree(e.target.value); });
+});
 $("week-add").addEventListener("click", () => { weeksOf(curDoc()).push(""); renderWeeksForm(); $("w-" + (curDoc().weeks.length - 1)).focus(); recompute(); });
 $("week-del").addEventListener("click", () => { const w = weeksOf(curDoc()); if (w.length > 1) { w.pop(); renderWeeksForm(); recompute(); } });
 $("week-contrat").addEventListener("input", (e) => { const v = parseHours(e.target.value || "35"); if (!isNaN(v) && v > 0) { STATE.contrat = v; store.set("contrat", v); recompute(); } });
