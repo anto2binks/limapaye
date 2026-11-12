@@ -259,6 +259,17 @@ table.multi td.n { font-family: var(--font-num); text-align: right; }
     </div>
   </section>
 
+  <section class="section" aria-labelledby="h-cp">
+    <div class="section-head"><h2 id="h-cp">Tes congés payés</h2><div class="counts" id="count-cp"></div></div>
+    <div class="panel">
+      <div class="grid-form">
+        <div class="field"><label for="cp-pris">Jours de congé pris ce mois</label><input id="cp-pris" inputmode="decimal" autocomplete="off" placeholder="0"><span class="hint">Laisse vide ou 0 si tu n'en as pas pris</span></div>
+        <div class="field"><label for="cp-entree">Date d'entrée dans l'entreprise</label><input id="cp-entree" type="date"><span class="hint">Pour estimer tes jours acquis</span></div>
+      </div>
+      <ul class="checks" id="checks-cp"></ul>
+    </div>
+  </section>
+
   <section class="section" aria-labelledby="h-indem">
     <div class="section-head"><h2 id="h-indem">Tes paniers et indemnités du mois</h2><div class="counts" id="count-indem"></div></div>
     <p class="muted small">Note combien de paniers (et autres indemnités) tu as eus ce mois-ci et leur montant unitaire (barème de ta convention collective). L'outil compare avec ce que la fiche t'a versé. Les montants unitaires sont retenus sur cet appareil pour les autres mois.</p>
@@ -668,6 +679,7 @@ function extract(text) {
   f.netPaye = lastNum(npL);
 
   f._absences = lines.filter((l, i) => /absence|entree\/sortie|entree sortie|retenue (pour )?(absence|maladie)|maladie|accident du travail|conges? sans solde|non remunere|jours? de carence|greve|mise a pied/.test(norm(l)) && !/cotisation|complementaire|prevoyance|indemnite|professionnelle|suppression|evolution|sante|totalite|complement/.test(norm(l)) && numbersIn(l).some((x) => x < 0) && !inCumul(lines, i));
+  f._cpLines = lines.filter((l, i) => { const n = norm(l); return /conges? payes?|\bc\.?p\.?\b|conges? (acquis|pris|restants?)|solde (de )?conges|acquis n|n-1|n - 1|jours? (de conges|acquis|pris)/.test(n) && !/cotisation|caisse de conges payes? \d/.test(n) && !inCumul(lines, i); });
   f._absHours = r2(f._absences.reduce((a, l) => { const ns = numbersIn(l); return a + (ns.length >= 3 && Math.abs(ns[0]) < 250 && /\b(heures?|hres?|h)\b|\d,\d{2}\s+\d/.test(norm(l)) ? Math.abs(ns[0]) : 0); }, 0));
   if (f._heuresFromBase && f._absHours) f.heures = r2(f.heures - f._absHours);
   f.cout = lastNum(findLine(lines, (n) => /total verse par l.employeur|cout (total|global|employeur|salarial total)|total employeur/.test(n)));
@@ -1067,7 +1079,7 @@ const MENTIONS = [
   ["Montant net social", /net social/, "oblig", "Obligatoire depuis 2024. C'est ce montant que tu déclares à la CAF pour la prime d'activité ou le RSA."],
   ["Date de paiement", /date de (paiement|versement|paie)|pa(ye|iement) le|verse le|paiement :/, "oblig"],
   ["Détail des indemnités (paniers repas, casse-croûte, déplacements…)", /panier|repas|casse[- ]?croute|deplacement|kilometr/, "situ", "Obligatoire dès que tu en touches : chaque indemnité doit apparaître avec sa nature et son montant. Si tu touches des « indemnités non soumises » sans détail, c'est incomplet."],
-  ["Congés payés (dates de congé et indemnité)", /conges|\bcp\b/, "situ", "Obligatoire si tu as pris des congés ce mois-ci. Beaucoup d'employeurs affichent aussi le solde : c'est conseillé."],
+  ["Congés payés (dates et indemnité si pris, compteurs acquis / pris / solde)", /conges|\bcp\b/, "situ", "Les dates et l'indemnité sont obligatoires si tu as pris des congés ce mois-ci (indique-le dans « Tes congés payés »). Les compteurs (acquis N-1, N, solde) ne sont pas imposés par la loi mais sont affichés par presque tous les logiciels de paie : sans eux, demande ton solde par écrit."],
   ["Heures supplémentaires (nombre et majoration)", /heures? sup|majoration|majore|\bhs\b|heures? compl/, "situ", "Obligatoire seulement si tu en as fait."],
   ["Total versé par l'employeur (coût total)", /total verse par l.employeur|cout (total|global|employeur)/, "oblig"],
   ["Mention « à conserver sans limitation de durée »", /sans limitation de duree|conserve[rz]/, "oblig"],
@@ -1232,6 +1244,8 @@ function selectDoc(i) {
   renderLines(d.lines);
   renderIndemForm();
   renderWeeksForm();
+  $("cp-pris").value = d.cpPris != null ? String(d.cpPris).replace(".", ",") : "";
+  $("cp-entree").value = STATE.entree || "";
   renderMonths();
   recompute();
 }
@@ -1382,6 +1396,39 @@ function checkWeeks(d, v) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Congés payés                                                        */
+/* ------------------------------------------------------------------ */
+STATE.entree = store.get("entree", "");
+function cpAcquiredEstimate(d) {
+  const end = d.start ? new Date(d.start.getFullYear(), d.start.getMonth() + 1, 0) : null;
+  if (!end) return null;
+  // Période de référence : du 1er juin au 31 mai
+  let refStart = new Date(end.getFullYear(), 5, 1);
+  if (end < refStart) refStart = new Date(end.getFullYear() - 1, 5, 1);
+  let from = refStart;
+  if (STATE.entree) { const e = new Date(STATE.entree); if (!isNaN(e) && e > from) from = e; }
+  const months = Math.max(0, (end.getFullYear() - from.getFullYear()) * 12 + end.getMonth() - from.getMonth() + (from.getDate() <= 1 ? 1 : 0));
+  return { months, days: Math.min(30, months * 2.5), refStart, from };
+}
+function checkCP(d, v) {
+  const out = [];
+  const lines = d.f._cpLines || [];
+  const pris = d.cpPris || 0;
+  const hasCounters = lines.some((l) => /acquis|solde|restant|n-1|n - 1|pris/.test(norm(l)));
+  const hasIndem = lines.some((l) => /indemnite|absence|conges? payes?/.test(norm(l)) && numbersIn(l).some((x) => Math.abs(x) > 0));
+  if (pris > 0) {
+    if (!lines.length) out.push({ s: "bad", t: "Congés pris mais absents de la fiche", d: "Tu indiques " + pris.toLocaleString("fr-FR") + " jour(s) de congé ce mois-ci, mais la fiche n'en parle pas. Quand des congés sont pris dans le mois, le Code du travail (art. R3243-1) impose d'indiquer <b>les dates de congé et le montant de l'indemnité</b> de congés payés. Demande une fiche corrigée." });
+    else out.push({ s: hasIndem ? "ok" : "warn", t: "Congés du mois sur la fiche", d: hasIndem ? "Des lignes de congés apparaissent. Vérifie les dates et le montant. L'indemnité doit être au moins égale au salaire que tu aurais touché en travaillant (ou au 1/10e de ta rémunération de l'année, si c'est plus avantageux)." : "Des congés sont mentionnés, mais sans indemnité chiffrée : les dates et le montant doivent figurer." });
+  }
+  if (lines.length) out.push({ s: "info", t: "Lignes de congés lues", d: lines.map((l) => "<code class=\"src\">" + esc(l) + "</code>").join(" ") });
+  if (!hasCounters) {
+    const est = cpAcquiredEstimate(d);
+    out.push({ s: "warn", t: "Pas de compteur de congés (acquis N-1, N, pris, solde)", d: "La fiche n'indique pas combien de jours de congé tu as. La loi n'oblige pas à mettre ces compteurs sur la fiche, mais presque tous les logiciels de paie le font, et ton employeur doit pouvoir te dire tes droits. <b>Demande-lui ton solde par écrit.</b> Repère : tu gagnes 2,5 jours ouvrables par mois de travail (30 jours, soit 5 semaines par an), y compris pendant un arrêt maladie (2 jours par mois en maladie non professionnelle)." + (est ? " Estimation pour la période en cours (depuis le " + est.from.toLocaleDateString("fr-FR") + ") : environ <b>" + est.days.toLocaleString("fr-FR") + " jours acquis</b>" + (STATE.entree ? "" : " si tu étais déjà dans l'entreprise au 1er juin (indique ta date d'entrée pour affiner)") + ", plus ce qui restait de l'année précédente (N-1)." : "") });
+  } else out.push({ s: "ok", t: "Compteur de congés présent", d: "Compare-le avec tes propres comptes : 2,5 jours ouvrables par mois travaillé." });
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
 /* Comparaison sur plusieurs mois                                      */
 /* ------------------------------------------------------------------ */
 function hsReductionPresent(text) {
@@ -1439,6 +1486,10 @@ function renderMulti(P) {
       ? { s: "bad", t: "Heures sup manquantes sur " + months.length + " mois : " + missH.toLocaleString("fr-FR", { maximumFractionDigits: 2 }) + " h", d: "Mois : " + months.join(", ") + ", d'après les heures que tu as notées." }
       : { s: "ok", t: "Heures sup conformes à ton décompte", d: "Sur les " + wk.length + " mois où tu as noté tes heures." });
   }
+  const noCP = docs.filter((d) => !(d.f._cpLines || []).some((l) => /acquis|solde|restant|n-1|pris/.test(norm(l))));
+  if (noCP.length) out.push({ s: "warn", t: "Aucun compteur de congés sur " + noCP.length + " fiche(s) sur " + docs.length, d: "Mois : " + noCP.map((d) => d.label).join(", ") + ". Demande ton solde de congés par écrit à ton employeur." });
+  const cpMissing = docs.filter((d) => d.cpPris > 0 && !(d.f._cpLines || []).length);
+  if (cpMissing.length) out.push({ s: "bad", t: "Congés pris non indiqués sur " + cpMissing.length + " fiche(s)", d: "Mois : " + cpMissing.map((d) => d.label + " (" + d.cpPris + " j)").join(", ") + ". Les dates et l'indemnité de congés doivent figurer sur la fiche du mois où tu les prends." });
   const indem = docs.map((d) => ({ d, t: indemTotal(d) })).filter((x) => x.t.any && !x.t.missingUnit);
   if (indem.length) {
     const diff = r2(indem.reduce((a, x) => a + (x.d.values.nonSoumis || 0) - x.t.tot, 0));
@@ -1459,13 +1510,15 @@ function recompute() {
   const calc = checkCalculs(v, P), cotis = checkCotisations(STATE.lines, v, P), ment = checkMentions(STATE.text);
   const indem = d ? checkIndem(d, v) : [];
   const sem = d ? checkWeeks(d, v) : [];
+  const cp = d ? checkCP(d, v) : [];
+  renderChecks("checks-cp", "count-cp", cp);
   renderChecks("checks-sem", "count-sem", sem);
   renderChecks("checks-calc", "count-calc", calc);
   renderChecks("checks-cotis", "count-cotis", cotis);
   renderChecks("checks-mentions", "count-mentions", ment);
   renderChecks("checks-indem", "count-indem", indem);
   renderMulti(P);
-  STATE.results = { calc, cotis, ment, indem, sem, v };
+  STATE.results = { calc, cotis, ment, indem, sem, cp, v };
 }
 
 function analyse(text, msg, kind, name) {
@@ -1504,7 +1557,7 @@ function reportText() {
     "Analyse de ma fiche de paie" + ($("periode-lue").textContent ? " (" + $("periode-lue").textContent + ")" : ""),
     "",
     "Points à vérifier :",
-    bad(R.calc.concat(R.sem || [], R.cotis, R.indem)) || "- aucun",
+    bad(R.calc.concat(R.sem || [], R.cp || [], R.cotis, R.indem)) || "- aucun",
     multi ? "\nSur plusieurs mois :\n" + multi : "",
     "",
     "Mentions obligatoires (art. R3243-1 du Code du travail) que je ne trouve pas :",
@@ -1564,7 +1617,7 @@ function buildDataBlock() {
       "Texte extrait du PDF (anonymisé) :\n" + anonymize(d.text).slice(0, 14000) + "\n\n" +
       "Chiffres retenus (lus automatiquement puis éventuellement corrigés par le salarié) :\n" + vals + "\n" +
       "Situation : " + flags + "\n" +
-      wk + (indem ? "Décompte du salarié pour ses indemnités ce mois-ci :\n" + indem + "\n" : "Le salarié n'a pas indiqué son décompte de paniers pour ce mois.\n");
+      wk + "Jours de congé pris ce mois selon le salarié : " + (d.cpPris || 0) + (STATE.entree ? " ; date d'entrée : " + STATE.entree : "") + ".\n" + (indem ? "Décompte du salarié pour ses indemnités ce mois-ci :\n" + indem + "\n" : "Le salarié n'a pas indiqué son décompte de paniers pour ce mois.\n");
   }).join("\n\n") + "\n\nParamètres utilisés par l'outil : SMIC horaire " + eur(P.smic) + ", PMSS " + eur(P.pmss) + ".";
 }
 function localFindings() {
@@ -1572,7 +1625,7 @@ function localFindings() {
   const strip = (h) => h.replace(/<[^>]+>/g, "");
   const list = (arr) => arr.filter((c) => c.s !== "ok").map((c) => "- [" + STATUS_LABEL[c.s] + "] " + c.t + " : " + strip(c.d)).join("\n");
   const multi = Array.from(document.querySelectorAll("#checks-multi li")).map((li) => "- " + li.querySelector(".title").textContent + " : " + li.querySelector(".detail").textContent).join("\n");
-  return "Constats de l'outil automatique pour la fiche affichée (" + curDoc().label + ") :\n" + list(R.calc.concat(R.sem || [], R.cotis, R.indem, R.ment)) + (multi ? "\n\nConstats sur plusieurs mois :\n" + multi : "");
+  return "Constats de l'outil automatique pour la fiche affichée (" + curDoc().label + ") :\n" + list(R.calc.concat(R.sem || [], R.cp || [], R.cotis, R.indem, R.ment)) + (multi ? "\n\nConstats sur plusieurs mois :\n" + multi : "");
 }
 const AI_RULES = `Tu es un expert de la paie en France (règles 2026), au service d'un salarié qui a du mal à lire ses fiches de paie. Tu tutoies, tu écris en français simple, sans jargon (ou en l'expliquant).
 
@@ -1580,7 +1633,7 @@ Ta mission : analyser les fiches de paie ci-dessous et dire clairement ce qui es
 
 Règles :
 - Vérifie les calculs toi-même (base × taux = montant, totaux, net avant impôt, net imposable, impôt, net payé, net social).
-- Vérifie les mentions obligatoires (art. R3243-1 du Code du travail, bulletin clarifié), le détail du brut, les heures (h/min ↔ centièmes), les heures supplémentaires (réduction de cotisations salariales sans plafond annuel ; exonération d'impôt plafonnée à 7 500 € par an), les indemnités et paniers (nature et montant obligatoires), le montant net social (les remboursements de frais professionnels n'y entrent pas), les taux et la répartition des cotisations.
+- Vérifie les mentions obligatoires (art. R3243-1 du Code du travail, bulletin clarifié), le détail du brut, les heures (h/min ↔ centièmes), les heures supplémentaires (réduction de cotisations salariales sans plafond annuel ; exonération d'impôt plafonnée à 7 500 € par an), les indemnités et paniers (nature et montant obligatoires), les congés payés (dates et indemnité obligatoires s'ils sont pris dans le mois ; compteurs acquis/pris/solde ; acquisition de 2,5 jours ouvrables par mois), le montant net social (les remboursements de frais professionnels n'y entrent pas), les taux et la répartition des cotisations.
 - Tiens compte de la convention collective et de l'emploi indiqués sur la fiche. Si tu cites un montant de barème conventionnel (panier, minimum de salaire…), précise que c'est à confirmer dans le texte en vigueur si tu n'es pas certain du chiffre exact pour 2026. N'invente jamais un chiffre.
 - Si plusieurs mois sont fournis, compare-les (ce qui change d'un mois à l'autre, ce qui manque certains mois, cumuls).
 - Sépare bien ce qui est certain, ce qui est probable et ce qui est à vérifier. Chiffre les sommes en jeu quand c'est possible.
@@ -1697,7 +1750,7 @@ $("btn-clear").addEventListener("click", () => {
   if (AI.busy) AI.ctl?.abort();
   STATE.docs = []; AI.turns = []; AI.html = []; aiRender(); $("ai-ask").hidden = true;
   $("paste-area").value = ""; $("ai-question").value = ""; $("ai-preview").textContent = ""; $("report-fallback").value = ""; $("report-fallback").hidden = true;
-  STATE.units = {}; store.set("units", {}); STATE.weekMode = "week"; store.set("weekMode", "week"); STATE.contrat = 35; store.set("contrat", 35);
+  STATE.units = {}; store.set("units", {}); STATE.weekMode = "week"; store.set("weekMode", "week"); STATE.contrat = 35; store.set("contrat", 35); STATE.entree = ""; store.set("entree", "");
   analyse(EXAMPLE, "Tout est effacé de cette page (fiches, chiffres, analyses, montants des paniers). L'exemple fictif est affiché.", "example", "Exemple");
 });
 $("btn-copy").addEventListener("click", () => {
@@ -1705,6 +1758,8 @@ $("btn-copy").addEventListener("click", () => {
   const fallback = () => { const ta = $("report-fallback"); ta.hidden = false; ta.value = t; ta.select(); $("copied").textContent = "Sélectionne le texte et copie-le."; };
   try { navigator.clipboard.writeText(t).then(() => { $("copied").textContent = "Rapport copié."; }, fallback); } catch (e) { fallback(); }
 });
+$("cp-pris").addEventListener("input", (e) => { const v = toNum(e.target.value || ""); curDoc().cpPris = isNaN(v) ? null : v; recompute(); });
+$("cp-entree").addEventListener("change", (e) => { STATE.entree = e.target.value; store.set("entree", STATE.entree); recompute(); });
 $("week-add").addEventListener("click", () => { weeksOf(curDoc()).push(""); renderWeeksForm(); $("w-" + (curDoc().weeks.length - 1)).focus(); recompute(); });
 $("week-del").addEventListener("click", () => { const w = weeksOf(curDoc()); if (w.length > 1) { w.pop(); renderWeeksForm(); recompute(); } });
 $("week-contrat").addEventListener("input", (e) => { const v = toNum(e.target.value || "35"); if (!isNaN(v) && v > 0) { STATE.contrat = v; store.set("contrat", v); recompute(); } });
