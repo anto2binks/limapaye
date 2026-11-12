@@ -309,7 +309,7 @@ const EXAMPLE = [
 /* Outils texte / nombres                                              */
 /* ------------------------------------------------------------------ */
 const norm = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[’`]/g, "'");
-const NUM_RE = /-?\d{1,3}(?:\.\d{3})+,\d+|-?\d{1,3}(?:[   ]\d{3})+(?:[.,]\d+)?|-?\d+(?:[.,]\d+)?/g;
+const NUM_RE = /(?<![A-Za-zÀ-ÿ\d,.])(?:-?\d{1,3}(?:\.\d{3})+,\d+|-?\d{1,3}(?:[   ]\d{3})+(?:[.,]\d+)?|-?\d+(?:[.,]\d+)?)/g;
 function toNum(s) {
   s = s.replace(/[   ]/g, "");
   if (/\.\d{3},/.test(s)) s = s.replace(/\./g, "");
@@ -317,6 +317,7 @@ function toNum(s) {
 }
 function numbersIn(line) {
   const cleaned = line
+    .replace(/\b(tranche|tr|niveau|coef\w*|echelon|échelon|page|n°|no)\s*\d+\b/gi, " ")   // « tranche 1 », « niveau 3 »
     .replace(/\b\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}\b/g, " ")      // dates
     .replace(/\b\d{3}[  ]?\d{3}[  ]?\d{3}[  ]?\d{5}\b/g, " ") // SIRET
     .replace(/\b\d{9,}\b/g, " ")                                    // longs identifiants
@@ -337,6 +338,73 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol;
 const $ = (id) => document.getElementById(id);
 function setStatus(msg, kind) { const s = $("status"); s.textContent = msg; s.className = "status" + (kind ? " " + kind : ""); }
 
+/* Reconstitue les lignes d'une page : regroupe par hauteur, découpe en blocs,
+   puis rattache chaque série de montants au libellé du tableau (même si le
+   libellé est sur deux lignes ou si un encadré à gauche partage la hauteur). */
+const isNumSeg = (s) => /^[-+\s\d.,%€¤]+$/.test(s) && /\d/.test(s);
+function layoutPage(items) {
+  items.sort((a, b) => b.y - a.y || a.x - b.x);
+  const rows = [];
+  for (const it of items) {
+    const tol = Math.max(2, it.h * 0.45);
+    let row = rows.find((r) => Math.abs(r.y - it.y) <= tol);
+    if (!row) { row = { y: it.y, items: [] }; rows.push(row); }
+    row.items.push(it);
+  }
+  rows.sort((a, b) => b.y - a.y);
+  // Découpe chaque ligne en blocs séparés par un grand espace
+  for (const r of rows) {
+    r.items.sort((a, b) => a.x - b.x);
+    r.segs = [];
+    let cur = null;
+    for (const it of r.items) {
+      const gap = cur ? it.x - cur.end : Infinity;
+      const numJoin = cur && isNumSeg(cur.s) && isNumSeg(it.s);
+      if (!cur || gap > it.h * 1.5 || (numJoin && gap > it.h * 0.6)) {
+        cur = { s: it.s, x: it.x, end: it.x + it.w, h: it.h };
+        r.segs.push(cur);
+      } else {
+        cur.s += (gap > it.h * 0.15 ? " " : "") + it.s;
+        cur.end = it.x + it.w;
+      }
+    }
+    r.segs.forEach((s) => { s.s = s.s.replace(/\s+/g, " ").trim(); s.num = isNumSeg(s.s); });
+  }
+  // Colonne des libellés du tableau = position la plus fréquente d'un texte suivi de montants
+  const votes = {};
+  for (const r of rows) r.segs.forEach((s, i) => { if (s.num && i > 0 && !r.segs[i - 1].num) { const k = Math.round(r.segs[i - 1].x / 6) * 6; votes[k] = (votes[k] || 0) + 1; } });
+  const best = Object.entries(votes).sort((a, b) => b[1] - a[1])[0];
+  const XL = best ? +best[0] - 6 : -Infinity;
+  const lines = [];
+  const orphans = [];
+  for (const r of rows) {
+    let lastAny = null, lastTable = null;
+    for (const s of r.segs) {
+      if (!s.num) {
+        const l = { y: r.y, x: s.x, parts: [s.s], table: s.x >= XL };
+        lines.push(l); lastAny = l; if (l.table) lastTable = l;
+      } else {
+        const target = s.x >= XL ? lastTable : lastAny;
+        if (target) target.parts.push(s.s);
+        else orphans.push({ y: r.y, x: s.x, s: s.s, h: s.h });
+      }
+    }
+  }
+  for (const o of orphans) {
+    let best = null, bd = Infinity;
+    for (const l of lines) {
+      if (!l.table || l.x > o.x) continue;
+      const d = l.y - o.y; // positif = libellé au-dessus
+      const score = d >= 0 ? d : -d * 1.3;
+      if (score < bd) { bd = score; best = l; }
+    }
+    if (best && bd < o.h * 3) best.parts.push(o.s);
+    else lines.push({ y: o.y, x: o.x, parts: [o.s] });
+  }
+  lines.sort((a, b) => b.y - a.y || a.x - b.x);
+  return lines.map((l) => l.parts.join("   "));
+}
+
 async function readPdf(file) {
   if (!window.pdfjsLib) throw new Error("Le lecteur PDF n'a pas pu se charger. Vérifie ta connexion, ou utilise « Coller le texte ».");
   pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -347,28 +415,7 @@ async function readPdf(file) {
     const page = await pdf.getPage(p);
     const tc = await page.getTextContent();
     const items = tc.items.filter((i) => i.str && i.str.trim()).map((i) => ({ s: i.str, x: i.transform[4], y: i.transform[5], w: i.width || 0, h: Math.abs(i.transform[3]) || 8 }));
-    items.sort((a, b) => b.y - a.y || a.x - b.x);
-    const rows = [];
-    for (const it of items) {
-      const tol = Math.max(2, it.h * 0.45);
-      let row = rows.find((r) => Math.abs(r.y - it.y) <= tol);
-      if (!row) { row = { y: it.y, items: [] }; rows.push(row); }
-      row.items.push(it);
-    }
-    rows.sort((a, b) => b.y - a.y);
-    for (const r of rows) {
-      r.items.sort((a, b) => a.x - b.x);
-      let line = "", end = null;
-      for (const it of r.items) {
-        if (end !== null) {
-          const gap = it.x - end;
-          line += gap > it.h * 0.9 ? "   " : (gap > it.h * 0.15 ? " " : "");
-        }
-        line += it.s;
-        end = it.x + it.w;
-      }
-      out.push(line.replace(/\s+$/, ""));
-    }
+    out.push(...layoutPage(items));
     if (p < pdf.numPages) out.push("");
   }
   const text = out.join("\n");
@@ -407,9 +454,12 @@ async function handleFile(file) {
 /* ------------------------------------------------------------------ */
 const FIELDS = [
   { id: "heures", label: "Heures payées", hint: "151,67 h = 35 h par semaine" },
+  { id: "hs25", label: "dont heures majorées à 25 %" },
+  { id: "hs50", label: "dont heures majorées à 50 %" },
   { id: "taux", label: "Taux horaire brut (€)", hint: "Ce que tu gagnes par heure, avant cotisations" },
   { id: "base", label: "Salaire de base (€)" },
   { id: "brut", label: "Salaire brut (€)", hint: "Total avant cotisations" },
+  { id: "nonSoumis", label: "Indemnités non soumises (€)", hint: "Frais pro (repas, déplacements…) : ni cotisations ni impôt" },
   { id: "totalSal", label: "Total cotisations salarié (€)", hint: "Ce qui est retiré de ton brut" },
   { id: "totalPat", label: "Total cotisations employeur (€)" },
   { id: "netAvant", label: "Net à payer avant impôt (€)" },
@@ -442,6 +492,17 @@ function extract(text) {
       else f.base = c;
     } else if (ns.length) f.base = ns[ns.length - 1];
   }
+  const nt = norm(text);
+  const hm = nt.match(/nombre d'heures[\s\S]{0,120}?(\d{1,3})\s*h\s*(\d{1,2})?\s*(?:min)?/);
+  if (f.heures == null && hm) f.heures = r2(+hm[1] + (hm[2] ? +hm[2] / 60 : 0));
+  const reMaj = /(\d{1,3})\s*h\s*(\d{1,2})?\s*(?:min)?\s*a\s*(\d{1,3})(?:[,.](\d+))?\s*%/g;
+  let mm; f.hs25 = null; f.hs50 = null;
+  while ((mm = reMaj.exec(nt))) {
+    const h = +mm[1] + (mm[2] ? +mm[2] / 60 : 0);
+    let rate = parseFloat(mm[3] + "." + (mm[4] || "0")); if (rate < 1) rate *= 100; // « 0,25% » écrit pour 25 %
+    if (Math.round(rate) === 25) f.hs25 = r2((f.hs25 || 0) + h);
+    else if (Math.round(rate) === 50) f.hs50 = r2((f.hs50 || 0) + h);
+  }
   if (f.heures == null) {
     const hL = findLine(lines, (n) => /(heures|horaire) (payees|travaillees|du mois|mensuel)|nombre d'heures|nb heures|total heures/.test(n));
     const ns = hL ? numbersIn(hL).filter((x) => x > 0 && x < 300) : [];
@@ -456,6 +517,7 @@ function extract(text) {
   const totL = findLine(lines, (n) => /total (des )?(cotisations|retenues|charges)/.test(n));
   if (totL) { const ns = numbersIn(totL).filter((x) => x > 0); if (ns.length >= 2) { f.totalSal = ns[ns.length - 2]; f.totalPat = ns[ns.length - 1]; } else if (ns.length) f.totalSal = ns[0]; }
 
+  f.nonSoumis = lastNum(findLine(lines, (n) => /non soumis|indemnites? non|frais professionnels|remboursement de frais/.test(n)));
   f.netAvant = lastNum(findLine(lines, (n) => /net (a|à) payer avant|net avant imp|net a payer avant/.test(n)));
   f.netImpo = lastNum(findLine(lines, (n) => /net imposable|net fiscal|montant imposable/.test(n) && !/cumul/.test(n)));
   f.netSocial = lastNum(findLine(lines, (n) => /net social/.test(n)));
@@ -467,6 +529,7 @@ function extract(text) {
     const ns = numbersIn(pasL).filter((x) => !(pm && x === toNum(pm[1])));
     if (ns.length) f.pas = Math.abs(ns[ns.length - 1]);
     if (f.tauxPas == null && ns.length >= 3) { const t = ns[ns.length - 2]; if (t >= 0 && t <= 60) f.tauxPas = t; }
+    if (f.netImpo == null && ns.length >= 3) { f.netImpo = ns[ns.length - 3]; f._impoFromPas = true; }
   }
 
   let npL = findLine(lines, (n) => /net (paye|verse|a verser)/.test(n) && !/avant/.test(n));
@@ -495,12 +558,20 @@ const GLOSSARY = [
   [/prime|gratification|13e mois|treizieme|bonus|anciennete/, "Prime", "Somme en plus du salaire de base. Elle est soumise aux cotisations comme le salaire.", NONE],
   [/avantage en nature|repas|logement/, "Avantage en nature", "Valeur d'un avantage fourni (repas, logement, voiture). Ajouté au brut pour les cotisations, puis retiré du net.", NONE],
   [/brut/, "Salaire brut", "Total de ce que tu as gagné avant qu'on retire les cotisations sociales.", NONE],
-  [/complementaire sante|mutuelle|frais de sante/, "Mutuelle (complémentaire santé)", "Rembourse ce que la Sécu ne paie pas (dentiste, lunettes…). L'employeur doit payer au moins la moitié.", BOTH],
+  [/complementaire sante|mutuelle|frais de sante|soins? sante/, "Mutuelle (complémentaire santé)", "Rembourse ce que la Sécu ne paie pas (dentiste, lunettes…). L'employeur doit payer au moins la moitié.", BOTH],
+  [/non soumis|indemnites? non/, "Indemnités non soumises", "Sommes versées sans cotisations ni impôt, en général des remboursements de frais professionnels (repas, déplacements). Elles s'ajoutent au net mais ne comptent pas pour ta retraite.", PAT],
+  [/totalite du salaire|sur la totalite/, "Sécurité sociale (sur tout le salaire)", "Regroupe plusieurs cotisations calculées sur tout ton brut. Ta part (0,40 %) va à ta retraite de base. La part employeur regroupe maladie, famille, retraite, accidents du travail et autonomie (CSA).", BOTH],
+  [/complement.*maladie/, "Complément maladie (employeur)", "Supplément de 6 % payé par l'employeur quand le salaire annuel dépasse 2,25 SMIC. Rien n'est retiré de ton salaire.", PAT],
+  [/complement.*famil/, "Complément allocations familiales (employeur)", "Supplément de 1,80 % payé par l'employeur sur les salaires élevés (au-delà d'environ 3,3 SMIC). Rien n'est retiré de ton salaire.", PAT],
+  [/\bcet\b.*tranche 1|cet sur/, "CET (retraite complémentaire)", "Contribution d'équilibre technique, due quand le salaire dépasse le plafond Sécu. Un montant négatif = on te rend ce qui avait été prélevé les mois précédents (régularisation).", BOTH],
+  [/fnal|\bcsa\b|solidarite autonomie|\bformation professionnelle|apprentissage|mobilite|dialogue social|autres contributions|forfait social/, "Autres contributions employeur", "Petites taxes payées par l'employeur : logement (FNAL), autonomie (CSA), formation, apprentissage, transports… Rien n'est retiré de ton salaire.", PAT],
+  [/chomage/, "Assurance chômage (+ AGS)", "Finance tes droits au chômage, et l'AGS garantit ton salaire si l'entreprise fait faillite. Payées uniquement par l'employeur.", PAT],
   [/prevoyance|incapacite/, "Prévoyance", "Assurance qui complète tes revenus en cas d'arrêt long, d'invalidité ou de décès.", BOTH],
   [/accident|at\s*\/?\s*mp|at-mp/, "Accidents du travail", "Couvre les accidents au travail et les maladies professionnelles. Payée uniquement par l'employeur, taux propre à l'entreprise.", PAT],
   [/maladie|sante/, "Assurance maladie (Sécu)", "Finance tes remboursements de soins, arrêts maladie, maternité. Payée par l'employeur (7 % ou 13 %). Côté salarié 0 %, sauf en Alsace-Moselle.", PAT],
   [/deplafonn/, "Retraite de base (déplafonnée)", "Retraite de la Sécu, calculée sur tout le brut. Petit taux : 0,40 % pour toi.", BOTH],
   [/plafonn|vieillesse/, "Retraite de base (plafonnée)", "Retraite de la Sécu, calculée sur le brut jusqu'au plafond (4 005 € par mois en 2026). 6,90 % pour toi.", BOTH],
+  [/complementaire.*(ceg|cet)/, "Retraite complémentaire (+ CEG)", "Ta 2e retraite (Agirc-Arrco), en plus de la Sécu : tu gagnes des points chaque mois. T1 = partie du salaire jusqu'au plafond Sécu (4 005 €), T2 = au-delà. Taux standard T1 : 4,01 % pour toi, 6,01 % pour l'employeur. Un montant négatif = régularisation.", BOTH],
   [/\bceg\b|equilibre general/, "CEG (retraite complémentaire)", "Contribution d'équilibre général : complète la retraite complémentaire. 0,86 % pour toi sur la tranche 1.", BOTH],
   [/\bcet\b|equilibre technique/, "CET (retraite complémentaire)", "Contribution d'équilibre technique, seulement si ton brut dépasse le plafond Sécu.", BOTH],
   [/apec/, "APEC", "Cotisation des cadres pour l'association qui les aide à trouver un emploi.", BOTH],
@@ -532,51 +603,121 @@ function cotisModel(v, P) {
   const csgBase = brut * P.abattCSG / 100;
   const smicM = P.smic * 151.67;
   const items = [
-    { label: "Retraite Sécu plafonnée", test: (n) => /plafonn/.test(n) && !/deplafonn/.test(n), base: t1, sal: [6.90], pat: [8.55] },
-    { label: "Retraite Sécu déplafonnée", test: (n) => /deplafonn/.test(n), base: brut, sal: [0.40], pat: [2.11, 2.02] },
-    { label: "Retraite complémentaire tranche 1", test: (n) => /(complementaire|agirc|arrco|retraite).*(tranche 1|tranche a|\bt1\b|\btr ?1\b)|^tranche 1/.test(n) && !/ceg|equilibre|sante/.test(n), base: t1, sal: [3.15], pat: [4.72] },
-    { label: "CEG tranche 1", test: (n) => /\bceg\b|equilibre general/.test(n) && !/tranche 2|\bt2\b/.test(n), base: t1, sal: [0.86], pat: [1.29], skipIf: t2 > 0 },
-    { label: "Assurance maladie", test: (n) => /maladie/.test(n) && !/complementaire|mutuelle|prevoyance|professionnelle|suppression|evolution/.test(n), base: brut, sal: v.alsace ? [1.30] : [], pat: [7.00, 13.00], note: "Taux employeur 7 % si brut ≤ 2,25 SMIC (" + eur(2.25 * smicM) + "), sinon 13 %." },
-    { label: "Allocations familiales", test: (n) => /famille|allocations familiales/.test(n), base: brut, sal: [], pat: [3.45, 5.25] },
-    { label: "Assurance chômage", test: (n) => /chomage/.test(n) && !/\bags\b|suppression|evolution/.test(n), base: Math.min(brut, 4 * pmss), sal: [], pat: [4.00, 4.05] },
+    { label: "Sécu sur la totalité du salaire", optional: true, test: (n) => /totalite du salaire|sur la totalite/.test(n), base: brut, sal: [0.40], pat: [],
+      extra: (ns) => ns.length >= 5 ? "La part employeur (" + pct(ns[3]) + ") regroupe maladie 7 %, famille 3,45 %, retraite déplafonnée 2,11 %, CSA 0,30 % et les accidents du travail : le taux accidents du travail de ton entreprise serait donc d'environ " + pct(ns[3] - 12.86) + "." : "" },
+    { label: "Retraite Sécu plafonnée", test: (n) => /plafonn/.test(n) && !/deplafonn|fnal/.test(n), base: t1, sal: [6.90], pat: [8.55] },
+    { label: "Retraite Sécu déplafonnée", test: (n) => /deplafonn/.test(n), base: brut, sal: [0.40], pat: [2.11, 2.02], altLabel: /totalite du salaire/ },
+    { label: "Retraite complémentaire + CEG tranche 1", optional: true, test: (n) => /(complementaire|agirc|arrco)/.test(n) && /ceg|equilibre general/.test(n) && /(tranche 1|\bt1\b)/.test(n), base: t1, sal: [4.01], pat: [6.01], total: 10.02 },
+    { label: "Retraite complémentaire tranche 1", test: (n) => /(complementaire|agirc|arrco|retraite).*(tranche 1|tranche a|\bt1\b|\btr ?1\b)|^tranche 1/.test(n) && !/ceg|equilibre|sante|\bcet\b/.test(n), base: t1, sal: [3.15], pat: [4.72], altLabel: /complementaire.*ceg.*(t1|tranche 1)/ },
+    { label: "CEG tranche 1", test: (n) => /\bceg\b|equilibre general/.test(n) && !/tranche 2|\bt2\b|complementaire/.test(n), base: t1, sal: [0.86], pat: [1.29], skipIf: t2 > 0, altLabel: /complementaire.*ceg.*(t1|tranche 1)/ },
+    { label: "Retraite complémentaire + CEG + CET tranche 2", optional: true, test: (n) => /(complementaire|agirc|arrco)/.test(n) && /(tranche 2|\bt2\b)/.test(n), base: t2, sal: [9.86], pat: [14.78], total: 24.64 },
+    { label: "CET (régularisation)", optional: true, test: (n) => /\bcet\b|equilibre technique/.test(n) && !/ceg|complementaire/.test(n), base: Math.min(brut, 8 * pmss), sal: [0.14], pat: [0.21] },
+    { label: "Assurance maladie", test: (n) => /maladie/.test(n) && !/complement|mutuelle|prevoyance|professionnelle|suppression|evolution/.test(n), base: brut, sal: v.alsace ? [1.30] : [], pat: [7.00, 13.00], altLabel: /totalite du salaire/, note: "Taux employeur 7 % si brut ≤ 2,25 SMIC (" + eur(2.25 * smicM) + "), sinon 13 %." },
+    { label: "Complément maladie (6 %)", optional: true, test: (n) => /complement.*maladie/.test(n), base: brut, sal: [], pat: [6.00],
+      extra: () => brut <= 2.25 * smicM ? "Ce complément n'est dû que si ta rémunération annuelle dépasse 2,25 SMIC (≈ " + eur(2.25 * smicM) + " par mois). Avec " + eur(brut) + " ce mois-ci, il ne devrait normalement pas s'appliquer, sauf si tes autres mois de l'année étaient beaucoup plus élevés. Ça ne change rien à ton net : c'est l'employeur qui paie, peut-être en trop." : "", warnIf: () => brut <= 2.25 * smicM },
+    { label: "Allocations familiales", test: (n) => /famille|allocations familiales/.test(n) && !/complement/.test(n), base: brut, sal: [], pat: [3.45, 5.25], altLabel: /totalite du salaire/ },
+    { label: "Complément allocations familiales (1,80 %)", optional: true, test: (n) => /complement.*famil/.test(n), base: brut, sal: [], pat: [1.80],
+      extra: () => brut <= 3.3 * smicM ? "Ce complément n'est dû qu'au-dessus d'environ 3,3 SMIC (≈ " + eur(3.3 * smicM) + " par mois). Avec " + eur(brut) + ", il ne devrait normalement pas s'appliquer. Côté employeur uniquement : aucun effet sur ton net." : "", warnIf: () => brut <= 3.3 * smicM },
+    { label: "Assurance chômage", test: (n) => /chomage/.test(n) && !/suppression|evolution/.test(n), base: Math.min(brut, 4 * pmss), sal: [], pat: [4.00, 4.05, 4.25, 4.30] },
     { label: "CSG déductible", test: (n) => /csg/.test(n) && /deductible/.test(n) && !/non[- ]?deductible/.test(n), base: csgBase, sal: [6.80], pat: [] },
     { label: "CSG/CRDS non déductible", test: (n) => /(csg|crds)/.test(n) && (/non[- ]?deductible/.test(n) || /crds/.test(n)), base: csgBase, sal: [2.90, 2.40, 0.50], pat: [] },
   ];
-  if (t2 > 0) {
-    items.push({ label: "Retraite complémentaire tranche 2", test: (n) => /(complementaire|agirc|arrco|retraite).*(tranche 2|tranche b|\bt2\b)/.test(n) && !/ceg|equilibre/.test(n), base: t2, sal: [8.64], pat: [12.95] });
-    items.push({ label: "CET", test: (n) => /\bcet\b|equilibre technique/.test(n), base: Math.min(brut, 8 * pmss), sal: [0.14], pat: [0.21] });
-  }
   if (v.cadre) items.push({ label: "APEC (cadres)", test: (n) => /apec/.test(n), base: Math.min(brut, 4 * pmss), sal: [0.024], pat: [0.036] });
   return items;
+}
+
+/* Vérifie base × taux = montant sur chaque ligne de cotisation */
+function lineArithmetic(ns) {
+  if (ns.length < 3) return null;
+  const tol = (a) => Math.max(0.02, Math.abs(a) * 0.002);
+  const base = ns[0];
+  const res = { base, pairs: [], bad: [] };
+  for (let i = 1; i + 1 < ns.length; i += 2) {
+    const r = ns[i], m = ns[i + 1];
+    if (!(Math.abs(r) < 100)) break;
+    const e = base * r / 100;
+    if (near(e, m, tol(m))) res.pairs.push({ r, m });
+    else res.bad.push({ r, m, e: r2(e) });
+  }
+  return res;
 }
 
 function checkCotisations(lines, v, P) {
   const out = [];
   if (!(v.brut > 0)) return [{ s: "info", t: "Salaire brut manquant", d: "Indique ton salaire brut dans « Les chiffres lus » pour vérifier chaque cotisation." }];
+
+  // 1. Contrôle arithmétique de toutes les lignes « base / taux / montant »
+  let okLines = 0; const badLines = [];
+  for (const l of lines) {
+    const n = norm(l);
+    if (/total|net |impot|prelevement/.test(n)) continue;
+    const ns = numbersIn(l);
+    if (ns.length < 3 || !(Math.abs(ns[0]) > 50)) continue;
+    if (near(ns[0] * ns[1], ns[2], Math.max(0.1, Math.abs(ns[2]) * 0.01))) continue; // heures × taux horaire
+    const a = lineArithmetic(ns);
+    if (!a) continue;
+    if (a.pairs.length && !a.bad.length) okLines++;
+    else if (a.bad.length && a.pairs.length + a.bad.length >= 1 && a.bad.every((b) => Math.abs(b.r) < 30)) badLines.push({ l, a });
+  }
+  if (okLines || badLines.length) {
+    out.push(badLines.length
+      ? { s: "warn", t: "Calcul base × taux = montant", d: okLines + " lignes justes, mais " + badLines.length + " ne tombent pas juste : " + badLines.map((b) => b.a.bad.map((x) => eur(b.a.base) + " × " + pct(x.r) + " = " + eur(x.e) + " (affiché " + eur(x.m) + ")").join(", ")).join(" ; ") + ". Vérifie que la lecture est bonne, sinon demande une explication." }
+      : { s: "ok", t: "Calcul base × taux = montant", d: "Les " + okLines + " lignes de cotisation lues tombent juste : chaque montant correspond bien à la base multipliée par le taux affiché." });
+  }
+
+  // 2. Taux comparés aux taux légaux
+  const used = new Set();
   for (const it of cotisModel(v, P)) {
     if (it.skipIf) continue;
-    const line = lines.find((l) => it.test(norm(l)));
-    const expSal = it.sal.map((r) => ({ r, a: r2(it.base * r / 100) }));
-    const expPat = it.pat.map((r) => ({ r, a: r2(it.base * r / 100) }));
-    const describe = (arr) => arr.map((e) => pct(e.r, e.r < 0.1 ? 3 : 2) + " → " + eur(e.a)).join(" ou ");
+    const line = lines.find((l) => !used.has(l) && it.test(norm(l)) && /\d,\d/.test(l));
     if (!line) {
-      out.push({ s: "info", t: it.label, d: "Ligne non trouvée sur la fiche. Elle est peut-être regroupée avec une autre (ex : « Retraite »). Attendu : " + [expSal.length ? "toi " + describe(expSal) : "", expPat.length ? "employeur " + describe(expPat) : ""].filter(Boolean).join(" ; ") + " (base " + eur(it.base) + ")." });
+      if (it.optional) continue;
+      if (it.altLabel && lines.some((l) => it.altLabel.test(norm(l)))) continue; // regroupée ailleurs
+      const expSal = it.sal.map((r) => eur(r2(it.base * r / 100)) + " (" + pct(r) + ")"), expPat = it.pat.map((r) => eur(r2(it.base * r / 100)) + " (" + pct(r) + ")");
+      out.push({ s: "info", t: it.label, d: "Ligne non trouvée sur la fiche, peut-être regroupée avec une autre. Attendu : " + [expSal.length ? "toi " + expSal.join(" ou ") : "", expPat.length ? "employeur " + expPat.join(" ou ") : ""].filter(Boolean).join(" ; ") + "." });
       continue;
     }
+    used.add(line);
     const ns = numbersIn(line);
-    const tol = (a) => Math.max(0.06, a * 0.012);
-    const hit = (arr) => arr.find((e) => ns.some((n) => near(Math.abs(n), e.a, tol(e.a))));
-    const hs = hit(expSal), hp = hit(expPat);
-    const needS = expSal.length > 0, needP = expPat.length > 0;
-    const parts = [];
-    if (needS) parts.push(hs ? "ta part " + eur(hs.a) + " (" + pct(hs.r, hs.r < 0.1 ? 3 : 2) + ") ✓" : "ta part attendue " + describe(expSal) + " : <b>non retrouvée</b>");
-    if (needP) parts.push(hp ? "part employeur " + eur(hp.a) + " (" + pct(hp.r, hp.r < 0.1 ? 3 : 2) + ") ✓" : "part employeur attendue " + describe(expPat) + " : <b>non retrouvée</b>");
-    const okS = !needS || hs, okP = !needP || hp;
-    let s = okS && okP ? "ok" : (!okS ? "warn" : "info");
-    let extra = "";
-    if (!okP && okS) extra = " La part employeur ne change rien à ton salaire net, mais peut indiquer une erreur de taux.";
-    if (!okS) extra = " Cherche sur la ligne le montant de ta part : s'il est différent, demande une explication.";
-    if (it.note) extra += " " + it.note;
+    const lineBase = ns.length >= 3 ? ns[0] : null;
+    const bases = [it.base]; if (lineBase != null && !near(lineBase, it.base, 0.5)) bases.push(lineBase);
+    const tol = (a) => Math.max(0.03, Math.abs(a) * 0.004);
+    const hit = (rates) => { for (const b of bases.slice().reverse()) for (const r of rates) { const a = r2(b * r / 100); if (ns.some((n) => near(n, a, tol(a)))) return { r, a, b }; } return null; };
+    const hs = it.sal.length ? hit(it.sal) : null, hp = it.pat.length ? hit(it.pat) : null;
+    const ar = lineArithmetic(ns);
+    const shown = ar && ar.pairs.length ? ar.pairs : [];
+    const parts = []; let s = "ok"; let extra = "";
+    const pctFmt = (r) => pct(r, Math.abs(r) < 0.1 ? 3 : 2);
+    if (it.sal.length) {
+      if (hs) parts.push("ta part " + eur(hs.a) + " (" + pctFmt(hs.r) + ") ✓");
+      else {
+        s = "warn";
+        const sr = shown[0];
+        parts.push(sr ? "ta part : taux affiché <b>" + pctFmt(sr.r) + "</b> au lieu de " + pctFmt(it.sal[0]) : "ta part attendue " + it.sal.map(pctFmt).join(" ou ") + " : <b>non retrouvée</b>");
+      }
+    }
+    if (it.pat.length) {
+      if (hp) parts.push("part employeur " + eur(hp.a) + " (" + pctFmt(hp.r) + ") ✓");
+      else {
+        const pr = shown[it.sal.length ? 1 : 0];
+        parts.push(pr ? "part employeur : taux affiché " + pctFmt(pr.r) + " au lieu de " + it.pat.map(pctFmt).join(" ou ") : "part employeur attendue " + it.pat.map(pctFmt).join(" ou ") + " : non retrouvée");
+        if (s === "ok") s = "info";
+      }
+    }
+    if (it.total && shown.length >= 2 && !hs) {
+      const sum = shown[0].r + shown[1].r;
+      if (near(sum, it.total, 0.03)) {
+        const over = r2((shown[0].r - it.sal[0]) / 100 * lineBase);
+        extra += " Le taux total (" + pct(sum) + ") est le bon, mais la répartition n'est pas la répartition standard (" + pctFmt(it.sal[0]) + " salarié / " + pctFmt(it.pat[0]) + " employeur)" + (lineBase > 0 ? " : tu paies " + (over >= 0 ? "environ " + eur(over) + " de plus" : eur(-over) + " de moins") + " ce mois-ci" : ", ta part est plus élevée que la normale") + ". C'est légal seulement si un accord (de branche ou d'entreprise) le prévoit : demande lequel à ton employeur.";
+      }
+    }
+    if (lineBase != null && bases.length > 1) {
+      if (lineBase < 0) extra += " Base négative (" + eur(lineBase) + ") : c'est une régularisation, des cotisations prélevées les mois précédents te sont rendues.";
+      else if (/plafonn/.test(norm(line)) && lineBase > v.brut) extra += " La base (" + eur(lineBase) + ") est plus grande que ton brut : régularisation du plafond de la Sécu sur l'année (des sommes des mois précédents sont recalculées). C'est normal si tu as eu un mois avec un gros salaire ou si tu as commencé en cours de mois ; à comparer avec tes fiches précédentes.";
+      else if (/csg|crds/.test(norm(line)) && lineBase > it.base) extra += " Base = 98,25 % du brut + part employeur de la mutuelle/prévoyance (" + eur(lineBase - it.base) + "), c'est normal.";
+    }
+    if (it.extra) { const e = it.extra(ns); if (e) { extra += " " + e; if (it.warnIf && it.warnIf() && s === "ok") s = "info"; } }
+    if (it.note && s !== "ok") extra += " " + it.note;
     out.push({ s, t: it.label, d: parts.join(" · ") + "." + extra, src: line });
   }
   return out;
@@ -598,38 +739,73 @@ function expectedSalRate(v, P) {
 function checkCalculs(v, P) {
   const out = [];
   const has = (k) => v[k] != null && !isNaN(v[k]);
+  const ns0 = has("nonSoumis") ? v.nonSoumis : 0;
+  const h25 = has("hs25") ? v.hs25 : 0, h50 = has("hs50") ? v.hs50 : 0, hsTot = h25 + h50;
+  const fr = (h) => h.toLocaleString("fr-FR", { maximumFractionDigits: 2 });
 
   if (has("heures") && has("taux") && has("base")) {
     const e = r2(v.heures * v.taux);
     out.push(near(e, v.base, 0.05)
-      ? { s: "ok", t: "Salaire de base = heures × taux horaire", d: v.heures.toLocaleString("fr-FR") + " h × " + eur(v.taux) + " = <b>" + eur(e) + "</b>, comme sur ta fiche." }
-      : { s: "bad", t: "Salaire de base ≠ heures × taux horaire", d: v.heures.toLocaleString("fr-FR") + " h × " + eur(v.taux) + " = <b>" + eur(e) + "</b>, mais ta fiche indique " + eur(v.base) + " (écart " + eur(v.base - e) + ")." });
+      ? { s: "ok", t: "Salaire de base = heures × taux horaire", d: fr(v.heures) + " h × " + eur(v.taux) + " = <b>" + eur(e) + "</b>, comme sur ta fiche." }
+      : { s: "bad", t: "Salaire de base ≠ heures × taux horaire", d: fr(v.heures) + " h × " + eur(v.taux) + " = <b>" + eur(e) + "</b>, mais ta fiche indique " + eur(v.base) + " (écart " + eur(v.base - e) + ")." });
   }
 
-  const tx = has("taux") ? v.taux : (has("heures") && v.heures > 0 && has("base") ? v.base / v.heures : null);
+  // Taux horaire : lu, ou estimé à partir du brut et des heures (majorations comprises)
+  let tx = has("taux") ? v.taux : (has("heures") && v.heures > 0 && has("base") && !hsTot ? v.base / v.heures : null);
+  let estimated = false;
+  if (tx == null && has("brut") && has("heures") && v.heures > 0) { tx = v.brut / (v.heures + h25 * 0.25 + h50 * 0.5); estimated = true; }
   if (tx != null) {
+    const lbl = estimated ? "Ton taux horaire estimé (brut ÷ heures, majorations comprises, primes éventuelles incluses) est d'environ " : "Ton taux horaire (";
     out.push(tx + 0.005 >= P.smic
-      ? { s: "ok", t: "Au-dessus du SMIC", d: "Ton taux horaire (" + eur(tx) + ") est supérieur ou égal au SMIC 2026 (" + eur(P.smic) + ")." }
-      : { s: "bad", t: "En dessous du SMIC", d: "Ton taux horaire (" + eur(tx) + ") est inférieur au SMIC 2026 (" + eur(P.smic) + "). Sauf cas particulier (apprenti, moins de 18 ans), c'est interdit." });
+      ? { s: "ok", t: "Au-dessus du SMIC", d: lbl + eur(tx) + (estimated ? "" : ")") + ", au-dessus du SMIC 2026 (" + eur(P.smic) + ")." + (estimated ? " Vérifie aussi le minimum de ta convention collective pour ton niveau." : "") }
+      : { s: "bad", t: "En dessous du SMIC", d: lbl + eur(tx) + (estimated ? "" : ")") + ", en dessous du SMIC 2026 (" + eur(P.smic) + "). Sauf cas particulier (apprenti, moins de 18 ans), c'est interdit." });
   }
+
   if (has("heures")) {
     const h = v.heures;
-    out.push({ s: "info", t: "Durée du travail", d: near(h, 151.67, 0.01) ? "151,67 h = 35 h par semaine × 52 semaines ÷ 12 mois. Tu es à temps plein, payé pareil chaque mois." : (h < 151.67 ? h.toLocaleString("fr-FR") + " h payées : temps partiel (≈ " + (h * 12 / 52).toFixed(1).replace(".", ",") + " h par semaine). Les heures en plus de ton contrat sont des heures complémentaires, majorées d'au moins 10 %." : h.toLocaleString("fr-FR") + " h payées : plus que 151,67 h, il doit donc y avoir des heures supplémentaires majorées.") });
+    let d;
+    if (near(h, 151.67, 0.01)) d = "151,67 h = 35 h par semaine × 52 semaines ÷ 12 mois. Tu es à temps plein, payé pareil chaque mois.";
+    else if (h < 151.67) d = fr(h) + " h payées : temps partiel (≈ " + (h * 12 / 52).toFixed(1).replace(".", ",") + " h par semaine). Les heures en plus de ton contrat sont des heures complémentaires, majorées d'au moins 10 %.";
+    else {
+      d = fr(h) + " h payées, soit " + fr(r2(h - 151.67)) + " h de plus qu'un temps plein (151,67 h).";
+      if (hsTot) {
+        const rest = r2(h - 151.67 - hsTot);
+        d += " La fiche indique " + fr(hsTot) + " h majorées (" + (h25 ? fr(h25) + " h à 25 %" : "") + (h25 && h50 ? " et " : "") + (h50 ? fr(h50) + " h à 50 %" : "") + ").";
+        if (rest > 0.2) d += " Il reste <b>" + fr(rest) + " h</b> au-delà de 151,67 h qui ne sont pas indiquées comme majorées : demande à quoi elles correspondent (heures d'équivalence, temps de pause payé, régularisation…).";
+      } else d += " Ces heures en plus devraient apparaître comme heures supplémentaires majorées (25 % puis 50 %).";
+    }
+    out.push({ s: h > 151.67 && hsTot && (h - 151.67 - hsTot) > 0.2 ? "warn" : "info", t: "Durée du travail", d });
   }
 
   if (has("brut") && has("totalSal") && has("netAvant")) {
-    const e = r2(v.brut - v.totalSal);
+    const e = r2(v.brut - v.totalSal + ns0);
+    const formula = eur(v.brut) + " − " + eur(v.totalSal) + (ns0 ? " + " + eur(ns0) + " d'indemnités non soumises" : "");
     out.push(near(e, v.netAvant, 0.05)
-      ? { s: "ok", t: "Brut − cotisations = net avant impôt", d: eur(v.brut) + " − " + eur(v.totalSal) + " = <b>" + eur(e) + "</b> ✓" }
-      : { s: "warn", t: "Brut − cotisations ≠ net avant impôt", d: eur(v.brut) + " − " + eur(v.totalSal) + " = <b>" + eur(e) + "</b>, mais la fiche indique " + eur(v.netAvant) + " (écart " + eur(v.netAvant - e) + "). L'écart peut venir de titres-restaurant, d'un remboursement de transport ou d'un avantage en nature : vérifie qu'une ligne l'explique." });
+      ? { s: "ok", t: "Brut − cotisations" + (ns0 ? " + indemnités" : "") + " = net avant impôt", d: formula + " = <b>" + eur(e) + "</b> ✓" }
+      : { s: "warn", t: "Brut − cotisations ≠ net avant impôt", d: formula + " = <b>" + eur(e) + "</b>, mais la fiche indique " + eur(v.netAvant) + " (écart " + eur(v.netAvant - e) + "). L'écart peut venir de titres-restaurant, d'un remboursement de transport ou d'un avantage en nature : vérifie qu'une ligne l'explique." });
+  }
+  if (ns0 > 0) {
+    out.push({ s: "info", t: "Indemnités non soumises à cotisations : " + eur(ns0), d: "Ce sont en général des remboursements de frais professionnels (repas, casse-croûte, déplacements). Ils ne donnent droit ni à retraite ni à chômage. La fiche ne dit pas ce qu'ils contiennent : tu peux demander le détail, et vérifier les montants prévus par ta convention collective." });
   }
 
-  if (has("brut") && has("netAvant")) {
-    const ret = v.brut - v.netAvant, rate = ret / v.brut * 100;
+  if (has("brut") && has("totalSal")) {
+    const ret = v.totalSal, rate = ret / v.brut * 100;
     const exp = expectedSalRate(v, P), er = exp / v.brut * 100;
     const diff = ret - exp;
     const s = (diff >= -0.02 * v.brut && diff <= 0.05 * v.brut) ? "ok" : "warn";
-    out.push({ s, t: "Part des cotisations salariales", d: "On t'a retiré " + eur(ret) + ", soit <b>" + pct(rate, 1) + "</b> du brut. Les cotisations obligatoires représentent ≈ " + pct(er, 1) + " (" + eur(exp) + ")" + (s === "ok" ? ", la différence s'explique en général par la mutuelle et la prévoyance." : ". L'écart (" + eur(diff) + ") est inhabituel : vérifie les lignes de cotisations ci-dessous.") });
+    out.push({ s, t: "Part des cotisations salariales", d: "On t'a retiré " + eur(ret) + " de cotisations, soit <b>" + pct(rate, 1) + "</b> du brut. Les cotisations obligatoires standard représentent ≈ " + pct(er, 1) + " (" + eur(exp) + ")" + (s === "ok" ? ", la différence vient en général de la mutuelle, de la prévoyance et de la répartition de la retraite complémentaire." : ". L'écart (" + eur(diff) + ") est inhabituel : vérifie les lignes de cotisations ci-dessous.") });
+  }
+
+  // Heures supplémentaires : réduction de cotisations + exonération d'impôt
+  if (hsTot > 0 && has("brut")) {
+    const n = norm(STATE.text);
+    const hasRed = /reduction (de )?cotisations? salariales?|heures? sup[a-z.]*\s.*(exoner|reduc|deduc)|(exoneration|reduction|deduction).*heures? sup|loi tepa|\brcs\b/.test(n);
+    const T = v.brut / ((has("heures") ? v.heures : 151.67 + hsTot) + h25 * 0.25 + h50 * 0.5);
+    const hsPay = r2(T * (h25 * 1.25 + h50 * 1.5));
+    const gainNet = r2(hsPay * 0.1131);
+    if (!hasRed) {
+      out.push({ s: "bad", t: "Heures sup : réduction de cotisations et exonération d'impôt absentes", d: "Ta fiche indique " + fr(hsTot) + " h majorées, mais aucune ligne « réduction de cotisations salariales heures supplémentaires » n'apparaît. Normalement, la rémunération des heures sup (estimée ici à ≈ <b>" + eur(hsPay) + "</b>) donne droit à : 1) une baisse de tes cotisations retraite d'environ 11,31 %, soit ≈ <b>" + eur(gainNet) + " de net en plus</b> ; 2) une exonération d'impôt sur le revenu (jusqu'à 7 500 € par an), qui baisse ton net imposable et ton prélèvement à la source. Demande à ton employeur s'il a bien déclaré le montant des heures sup dans la déclaration TESE/DSN." });
+    } else out.push({ s: "ok", t: "Heures sup : réduction de cotisations présente", d: "Une ligne de réduction de cotisations sur les heures supplémentaires apparaît sur la fiche." });
   }
 
   if (has("netImpo") && has("tauxPas") && has("pas")) {
@@ -641,14 +817,22 @@ function checkCalculs(v, P) {
 
   if (has("netAvant") && has("netImpo") && has("brut")) {
     const nd = r2(v.brut * P.abattCSG / 100 * 0.029);
-    const e = r2(v.netAvant + nd);
+    const e = r2(v.netAvant - ns0 + nd);
     const d = r2(v.netImpo - e);
+    const formula = "Net avant impôt " + eur(v.netAvant) + (ns0 ? " − indemnités non soumises " + eur(ns0) : "") + " + CSG/CRDS non déductible ≈ " + eur(nd) + " = " + eur(e);
     let s, txt;
-    if (near(d, 0, 0.1)) { s = "ok"; txt = "Net avant impôt " + eur(v.netAvant) + " + CSG/CRDS non déductible ≈ " + eur(nd) + " = <b>" + eur(e) + "</b> ✓"; }
-    else if (d > 0 && d < 0.06 * v.brut) { s = "ok"; txt = "Net avant impôt + CSG/CRDS non déductible = " + eur(e) + ". Les " + eur(d) + " en plus correspondent en général à la part employeur de ta mutuelle, qui est imposable."; }
-    else if (d < 0 && d > -0.15 * v.brut) { s = "warn"; txt = "Le net imposable (" + eur(v.netImpo) + ") est plus bas qu'attendu (" + eur(e) + "). Normal seulement si tu as des heures supplémentaires exonérées ou une prime défiscalisée. Sinon, demande une explication."; }
+    if (near(d, 0, 0.1)) { s = "ok"; txt = formula + " ✓"; }
+    else if (d > 0 && d < 0.06 * v.brut) { s = "ok"; txt = formula + ". Les " + eur(d) + " en plus correspondent en général à la part employeur de ta mutuelle, qui est imposable."; }
+    else if (d < 0 && d > -0.3 * v.brut) { s = hsTot ? "ok" : "warn"; txt = "Le net imposable (" + eur(v.netImpo) + ") est plus bas que " + eur(e) + (hsTot ? " : c'est l'exonération d'impôt de tes heures supplémentaires." : ". Normal seulement si tu as des heures supplémentaires exonérées ou une prime défiscalisée. Sinon, demande une explication."); }
     else { s = "warn"; txt = "Le net imposable (" + eur(v.netImpo) + ") s'éloigne beaucoup du montant attendu (" + eur(e) + ")."; }
-    out.push({ s, t: "Net imposable", d: txt });
+    if (hsTot > 0 && d >= -0.1) { s = "bad"; txt += " <b>Mais tu as " + fr(hsTot) + " h supplémentaires</b> : leur rémunération devrait être retirée du net imposable (exonération jusqu'à 7 500 € par an). Elle ne l'a pas été, donc tu paies trop d'impôt à la source."; }
+    out.push({ s, t: "Net imposable" + (STATE.meta.impoFromPas ? " (lu comme « base » de l'impôt)" : ""), d: txt });
+  }
+
+  if (has("netSocial")) {
+    if (ns0 > 0 && has("netAvant") && near(v.netSocial, v.netAvant, 0.05)) {
+      out.push({ s: "warn", t: "Montant net social probablement trop élevé", d: "Ton net social (" + eur(v.netSocial) + ") est égal à ton net avant impôt, qui contient " + eur(ns0) + " d'indemnités non soumises. Les remboursements de frais professionnels ne doivent pas être comptés dans le net social. S'il s'agit bien de frais, ton net social serait plutôt d'environ <b>" + eur(v.netSocial - ns0) + "</b> (un peu plus avec la part employeur de la mutuelle). C'est important : c'est ce montant que la CAF utilise pour la prime d'activité. Demande une vérification à ton employeur." });
+    } else out.push({ s: "ok", t: "Montant net social présent", d: eur(v.netSocial) + ". C'est le montant à déclarer à la CAF (prime d'activité, RSA)." });
   }
 
   if (has("netAvant") && has("netPaye")) {
@@ -663,10 +847,8 @@ function checkCalculs(v, P) {
     out.push(v.cout >= v.brut
       ? { s: "ok", t: "Coût employeur", d: "Tu coûtes " + eur(v.cout) + " à ton employeur, soit " + pct((v.cout / v.brut - 1) * 100, 0) + " de plus que ton brut." }
       : { s: "warn", t: "Coût employeur plus petit que le brut", d: "Ce n'est pas possible : vérifie la valeur lue." });
-    if (has("totalPat")) {
-      const e = r2(v.brut + v.totalPat);
-      if (!near(e, v.cout, 0.1)) out.push({ s: "info", t: "Coût employeur ≠ brut + cotisations employeur", d: eur(v.brut) + " + " + eur(v.totalPat) + " = " + eur(e) + " pour " + eur(v.cout) + " indiqué. Peut s'expliquer par la part employeur des titres-restaurant ou du transport." });
-    }
+  } else if (has("brut") && has("totalPat")) {
+    out.push({ s: "info", t: "Coût employeur (calculé)", d: "La fiche ne l'indique pas. Calcul : " + eur(v.brut) + " + " + eur(v.totalPat) + " de cotisations employeur" + (ns0 ? " + " + eur(ns0) + " d'indemnités" : "") + " = <b>" + eur(v.brut + v.totalPat + ns0) + "</b>." });
   }
   if (!out.length) out.push({ s: "info", t: "Pas assez de chiffres", d: "Remplis au moins le brut, le net avant impôt et le net payé dans « Les chiffres lus sur ta fiche »." });
   return out;
@@ -686,10 +868,10 @@ const MENTIONS = [
   ["Position dans la classification (coefficient, niveau, échelon…)", /coef|niveau|echelon|classification|categorie|position|indice|statut/, "oblig", "Elle détermine ton salaire minimum dans la convention collective."],
   ["Période de paie", /periode|du \d{1,2}\/\d{1,2}\/\d{2,4}\s*au|mois de|paie de/, "oblig"],
   ["Nombre d'heures payées", /heure|151[,.]67|forfait/, "oblig", "Les heures normales et les heures supplémentaires doivent apparaître séparément."],
-  ["Salaire de base / taux horaire", /salaire de base|taux horaire|salaire mensuel|appointement|salaire forfaitaire/, "oblig"],
+  ["Détail du brut : salaire de base, taux horaire, heures sup, primes", /salaire de base|taux horaire|salaire mensuel|appointement|salaire forfaitaire/, "oblig", "La fiche doit montrer comment le brut est calculé (salaire de base, montant des heures majorées, primes). Sans ce détail, tu ne peux pas vérifier que tes heures sont bien payées."],
   ["Salaire brut", /brut/, "oblig"],
   ["Cotisations Santé", /sante|maladie/, "oblig"],
-  ["Accidents du travail – maladies professionnelles", /accident|at\s*\/?\s*mp|at-mp/, "oblig"],
+  ["Accidents du travail – maladies professionnelles (ligne à part)", /accident|at\s*\/?\s*mp|at-mp/, "oblig", "Le bulletin clarifié prévoit une ligne à part pour cette cotisation (100 % employeur). Si elle est regroupée dans une autre ligne, tu ne peux pas connaître le taux de ton entreprise."],
   ["Cotisations Retraite", /retraite|vieillesse/, "oblig"],
   ["Famille", /famille|allocations familiales/, "oblig"],
   ["Assurance chômage", /chomage|assurance emploi/, "oblig", "Pour les particuliers employeurs (CESU, Pajemploi), elle peut être regroupée."],
@@ -698,13 +880,13 @@ const MENTIONS = [
   ["Total des cotisations et contributions", /total (des )?(cotisations|retenues|charges)/, "oblig"],
   ["Allègements / exonérations de cotisations employeur", /allegement|exoneration|reduction generale|rgdu|reduction (de )?cotisation/, "situ", "Obligatoire quand l'employeur en bénéficie, ce qui est presque toujours le cas sous 3 SMIC."],
   ["Net à payer avant impôt sur le revenu", /net (a|à) payer avant|net avant imp/, "oblig"],
-  ["Net imposable", /net imposable|net fiscal|montant imposable/, "oblig"],
+  ["Net imposable", /net imposable|net fiscal|montant imposable/, "oblig", "", () => STATE.meta.impoFromPas],
   ["Impôt prélevé à la source (base, taux, montant)", /prelevement a la source|impot sur le revenu preleve|impot preleve|retenue a la source|\bpas\b|taux (personnalise|non personnalise|neutre)/, "oblig"],
   ["Net payé / versé", /net (paye|verse|a verser)|net (a|à) payer(?!\s*avant)/, "oblig"],
   ["Montant net social", /net social/, "oblig", "Obligatoire depuis 2024. C'est ce montant que tu déclares à la CAF pour la prime d'activité ou le RSA."],
   ["Date de paiement", /date de (paiement|versement|paie)|pa(ye|iement) le|verse le|paiement :/, "oblig"],
   ["Congés payés (dates de congé et indemnité)", /conges|\bcp\b/, "situ", "Obligatoire si tu as pris des congés ce mois-ci. Beaucoup d'employeurs affichent aussi le solde : c'est conseillé."],
-  ["Heures supplémentaires (nombre et majoration)", /heures? sup|majoration|\bhs\b|heures? compl/, "situ", "Obligatoire seulement si tu en as fait."],
+  ["Heures supplémentaires (nombre et majoration)", /heures? sup|majoration|majore|\bhs\b|heures? compl/, "situ", "Obligatoire seulement si tu en as fait."],
   ["Total versé par l'employeur (coût total)", /total verse par l.employeur|cout (total|global|employeur)/, "oblig"],
   ["Mention « à conserver sans limitation de durée »", /sans limitation de duree|conserve[rz]/, "oblig"],
   ["Renvoi vers service-public.fr (rubrique bulletin de paie)", /service-public|service public/, "oblig"],
@@ -712,9 +894,10 @@ const MENTIONS = [
 
 function checkMentions(text) {
   const n = norm(text);
-  return MENTIONS.map(([label, re, lvl, note]) => {
+  return MENTIONS.map(([label, re, lvl, note, alt]) => {
     const found = re.test(n);
     if (found) return { s: "ok", t: label, d: "Trouvé sur la fiche." };
+    if (alt && alt()) return { s: "ok", t: label, d: "Affiché comme « base » de l'impôt sur le revenu." };
     if (lvl === "situ") return { s: "info", t: label, d: "Non trouvé. " + (note || "") };
     return { s: "bad", t: label, d: "<b>Non trouvé.</b> " + (note || "Cette mention est obligatoire.") };
   });
@@ -752,7 +935,7 @@ function renderSummary(v) {
   const has = (k) => v[k] != null;
   const brut = v.brut, netAvant = v.netAvant, pas = v.pas ?? 0;
   const netPaye = v.netPaye ?? (has("netAvant") ? netAvant - pas : null);
-  const cot = has("brut") && has("netAvant") ? brut - netAvant : v.totalSal;
+  const cot = has("totalSal") ? v.totalSal : (has("brut") && has("netAvant") ? brut - netAvant + (v.nonSoumis || 0) : null);
   const tiles = [
     ["Salaire brut", brut],
     ["Cotisations retirées", cot != null ? -cot : null],
@@ -763,17 +946,18 @@ function renderSummary(v) {
   $("tiles").innerHTML = tiles.map(([k, val, hl]) => `<div class="tile${hl ? " hl" : ""}"><span class="k">${k}</span><span class="v">${eur(val)}</span></div>`).join("");
   const total = v.cout && v.cout > (brut || 0) ? v.cout : brut;
   if (total > 0 && netPaye != null && cot != null) {
-    const parts = [["--bar-net", netPaye, "Net versé"], ["--bar-tax", pas, "Impôt"], ["--bar-cot", cot, "Tes cotisations"]];
+    const parts = [["--bar-net", netPaye - (v.nonSoumis || 0), "Net versé (hors indemnités)"], ["--bar-tax", pas, "Impôt"], ["--bar-cot", cot, "Tes cotisations"]];
     if (v.cout && v.cout > brut) parts.push(["--bar-pat", v.cout - brut, "Cotisations employeur"]);
     $("bar").innerHTML = parts.map(([c, val]) => `<span style="width:${Math.max(0, val / total * 100)}%;background:var(${c})"></span>`).join("");
     $("legend").innerHTML = parts.map(([c, val, l]) => `<span><i style="background:var(${c})"></i>${l} ${pct(val / total * 100, 0)}</span>`).join("");
   } else { $("bar").innerHTML = ""; $("legend").innerHTML = ""; }
   if (brut > 0 && netPaye != null) {
-    const per100 = netPaye / brut * 100;
+    const per100 = (netPaye - (v.nonSoumis || 0)) / brut * 100;
     let s = `Sur <strong>100 €</strong> de salaire brut, tu touches <strong>${per100.toFixed(0)} €</strong> sur ton compte.`;
     if (cot != null) s += ` <strong>${(cot / brut * 100).toFixed(0)} €</strong> partent en cotisations (retraite, Sécu, CSG)`;
     if (pas) s += ` et <strong>${(pas / brut * 100).toFixed(0)} €</strong> en impôt`;
     s += ".";
+    if (v.nonSoumis) s += ` En plus, tu reçois <strong>${eur(v.nonSoumis)}</strong> d'indemnités (frais) sans cotisations ni impôt.`;
     if (v.cout > brut) s += ` Pour te verser ce salaire, ton employeur dépense en tout <strong>${eur(v.cout)}</strong>.`;
     $("plain").innerHTML = s;
   } else $("plain").textContent = "Complète le brut et le net payé pour voir le résumé.";
@@ -785,9 +969,10 @@ function renderLines(lines) {
     const ns = numbersIn(l);
     if (!ns.length) continue;
     const n = norm(l);
+    if (/loi n|garantit un droit|^page \d|reference|n° employeur|securite sociale :|adresse/.test(n) || !/\d,\d/.test(l)) continue;
     const g = GLOSSARY.find(([re]) => re.test(n));
     if (g) rows.push(`<tr><td class="lbl">${esc(l)}</td><td><span class="t">${g[1]}</span>${g[2]}</td><td class="who">${g[3]}</td></tr>`);
-    else if (ns.length >= 2 && /[a-z]{3}/.test(n)) rows.push(`<tr><td class="lbl">${esc(l)}</td><td><span class="t">Ligne non reconnue</span><span class="muted">Si c'est une cotisation ou une retenue, demande à quoi elle correspond.</span></td><td class="who">?</td></tr>`);
+    else if ((l.match(/\d,\d{2}/g) || []).length >= 2 && /[a-z]{3}/.test(n)) rows.push(`<tr><td class="lbl">${esc(l)}</td><td><span class="t">Ligne non reconnue</span><span class="muted">Si c'est une cotisation ou une retenue, demande à quoi elle correspond.</span></td><td class="who">?</td></tr>`);
   }
   $("lines").innerHTML = rows.join("") || `<tr><td colspan="3" class="muted">Aucune ligne chiffrée lue.</td></tr>`;
   $("lignes-count").textContent = rows.length ? rows.length + " lignes chiffrées" : "";
@@ -815,6 +1000,7 @@ function analyse(text, msg, kind) {
     $("f-" + fd.id).value = val != null ? String(val).replace(".", ",") : "";
   });
   $("f-cadre").checked = !!f._cadre; $("f-alsace").checked = !!f._alsace;
+  STATE.meta = { impoFromPas: !!f._impoFromPas };
   $("periode-lue").textContent = f._periode;
   $("raw").textContent = text;
   renderLines(lines);
