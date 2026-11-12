@@ -150,6 +150,25 @@ pre.raw { font: 12px/1.5 var(--font-num); background: var(--sunken); padding: 12
 .tabs button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 ol.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; max-width: 72ch; }
 .copied { font-size: 13px; color: var(--ok); }
+.months { display: flex; flex-wrap: wrap; gap: 6px; }
+.months button { font: 600 13px/1 var(--font-body); padding: 8px 12px; }
+.months button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.months button .x { margin-left: 4px; opacity: .6; font-weight: 400; }
+.indem { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px 12px; align-items: center; }
+.indem .h { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.indem input { font: 15px var(--font-num); padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); width: 100%; min-width: 0; }
+.indem .tot { font-family: var(--font-num); text-align: right; }
+@media (max-width: 520px) { .indem { grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr) minmax(0, 1fr); } .indem .tot, .indem .h.tot { display: none; } }
+table.multi { min-width: 760px; }
+table.multi td, table.multi th { white-space: nowrap; }
+table.multi td.n { font-family: var(--font-num); text-align: right; }
+.ai-out { font-size: 15px; line-height: 1.6; display: flex; flex-direction: column; gap: 10px; max-width: 75ch; }
+.ai-out h3 { font-size: 17px; margin-top: 8px; }
+.ai-out ul, .ai-out ol { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
+.ai-out pre { white-space: pre-wrap; font: 13px/1.5 var(--font-num); background: var(--sunken); padding: 12px; border-radius: 8px; margin: 0; }
+.ai-out .thinking { color: var(--muted); font-style: italic; }
+.chat-q { background: var(--accent-soft); border-radius: 8px; padding: 8px 12px; align-self: flex-start; }
+#ai-question { min-height: 70px; font-family: var(--font-body); font-size: 15px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
@@ -157,19 +176,19 @@ ol.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column;
   <header class="top">
     <span class="eyebrow">Bulletin de salaire · France · règles 2026</span>
     <h1>Décodeur de fiche de paie</h1>
-    <p class="muted">Dépose ta fiche de paie (PDF, ou photo). L'outil lit chaque ligne, t'explique en français simple ce qu'elle veut dire, refait les calculs et liste les mentions obligatoires qui manquent. Tout se passe dans ton navigateur : le fichier n'est envoyé nulle part.</p>
+    <p class="muted">Dépose ta fiche de paie (PDF, ou photo). L'outil lit chaque ligne, t'explique en français simple ce qu'elle veut dire, refait les calculs et liste les mentions obligatoires qui manquent. Tu peux déposer plusieurs mois d'un coup pour les comparer. La lecture et les vérifications se font dans ton navigateur : rien n'est envoyé, sauf si tu demandes l'analyse détaillée de Claude (texte anonymisé, sans ton nom, ton adresse ni ton n° de Sécu).</p>
   </header>
 
   <section class="section" aria-labelledby="h-import">
     <h2 id="h-import" hidden>Importer</h2>
     <div class="drop" id="drop">
       <div class="txt">
-        <strong>Glisse ta fiche de paie ici</strong>
-        <span class="muted small">PDF de préférence (celui téléchargé sur le site de l'URSSAF ou de ton employeur). Une photo marche aussi, mais la lecture est moins fiable.</span>
+        <strong>Glisse tes fiches de paie ici</strong>
+        <span class="muted small">Un ou plusieurs PDF (ceux téléchargés sur le site de l'URSSAF ou de ton employeur). Plusieurs mois permettent de vérifier les heures sup et les paniers dans le temps.</span>
       </div>
       <div class="btns">
-        <label class="btn primary" for="file">Choisir un fichier</label>
-        <input type="file" id="file" accept="application/pdf,image/*">
+        <label class="btn primary" for="file">Choisir des fiches</label>
+        <input type="file" id="file" accept="application/pdf,image/*" multiple>
         <button type="button" id="btn-paste">Coller le texte</button>
         <button type="button" id="btn-example">Recharger l'exemple</button>
       </div>
@@ -180,6 +199,7 @@ ol.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column;
       <div class="btns"><button type="button" class="primary" id="btn-analyse-paste">Analyser ce texte</button></div>
     </div>
     <div class="status" id="status" role="status"></div>
+    <div class="months" id="months" role="tablist" aria-label="Mois chargés"></div>
   </section>
 
   <section class="section" aria-labelledby="h-resume">
@@ -200,6 +220,26 @@ ol.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column;
     <div class="panel">
       <div class="grid-form" id="form"></div>
     </div>
+  </section>
+
+  <section class="section" aria-labelledby="h-indem">
+    <div class="section-head"><h2 id="h-indem">Tes paniers et indemnités du mois</h2><div class="counts" id="count-indem"></div></div>
+    <p class="muted small">Note combien de paniers (et autres indemnités) tu as eus ce mois-ci et leur montant unitaire (barème de ta convention collective). L'outil compare avec ce que la fiche t'a versé. Les montants unitaires sont retenus sur cet appareil pour les autres mois.</p>
+    <div class="panel">
+      <div class="indem" id="indem"></div>
+      <ul class="checks" id="checks-indem"></ul>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="h-multi" id="sec-multi" hidden>
+    <div class="section-head"><h2 id="h-multi">Sur plusieurs mois</h2><div class="counts" id="count-multi"></div></div>
+    <div class="tablewrap">
+      <table class="multi">
+        <thead><tr><th>Mois</th><th>Brut</th><th>Heures</th><th>dont maj.</th><th>Réduc. cotis. HS</th><th>HS défiscalisées ≈</th><th>Indemnités</th><th>Net social</th><th>Net payé</th></tr></thead>
+        <tbody id="multi-rows"></tbody>
+      </table>
+    </div>
+    <div class="panel"><ul class="checks" id="checks-multi"></ul></div>
   </section>
 
   <section class="section" aria-labelledby="h-calculs">
@@ -226,6 +266,24 @@ ol.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column;
         <thead><tr><th>Ligne lue</th><th>Ce que ça veut dire</th><th>Qui paie</th></tr></thead>
         <tbody id="lines"></tbody>
       </table>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="h-ai" id="sec-ai">
+    <div class="section-head"><h2 id="h-ai">Analyse détaillée par Claude</h2></div>
+    <div class="panel">
+      <p class="muted small" id="ai-intro">Claude relit toutes les fiches chargées, avec tes corrections et tes paniers, et te fait une analyse complète : ce qui est juste, ce qui cloche, les questions à poser et un mail prêt à envoyer. Le texte envoyé est anonymisé (nom, adresse et n° de Sécu retirés). L'analyse utilise ton compte Claude.</p>
+      <div class="btns">
+        <button type="button" class="primary" id="ai-run">Lancer l'analyse détaillée</button>
+        <button type="button" id="ai-stop" hidden>Arrêter</button>
+      </div>
+      <div class="ai-out" id="ai-out"></div>
+      <div id="ai-ask" hidden>
+        <label for="ai-question"><strong>Une question sur tes fiches ?</strong></label>
+        <textarea id="ai-question" placeholder="Ex. : combien devrait valoir un panier repas d'ambulancier en 2026 ?"></textarea>
+        <div class="btns"><button type="button" id="ai-send">Poser la question</button></div>
+      </div>
+      <details><summary class="small muted">Voir le texte envoyé à Claude</summary><pre class="raw" id="ai-preview"></pre></details>
     </div>
   </section>
 
@@ -375,6 +433,16 @@ function layoutPage(items) {
   for (const r of rows) r.segs.forEach((s, i) => { if (s.num && i > 0 && !r.segs[i - 1].num) { const k = Math.round(r.segs[i - 1].x / 6) * 6; votes[k] = (votes[k] || 0) + 1; } });
   const best = Object.entries(votes).sort((a, b) => b[1] - a[1])[0];
   const XL = best ? +best[0] - 6 : -Infinity;
+  // Texte justifié de l'encadré de gauche : recolle les mots écartés
+  for (const r of rows) {
+    const merged = [];
+    for (const sg of r.segs) {
+      const prev = merged[merged.length - 1];
+      if (prev && !prev.num && !sg.num && sg.x < XL && sg.x - prev.end < sg.h * 4) { prev.s += " " + sg.s; prev.end = sg.end; }
+      else merged.push(sg);
+    }
+    r.segs = merged;
+  }
   const lines = [];
   const orphans = [];
   for (const r of rows) {
@@ -431,22 +499,6 @@ async function readImage(file) {
   if (!window.Tesseract) await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
   const res = await Tesseract.recognize(file, "fra");
   return res.data.text;
-}
-
-async function handleFile(file) {
-  if (!file) return;
-  try {
-    setStatus("Lecture de « " + file.name + " »…");
-    let text;
-    if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) text = await readPdf(file);
-    else if (file.type.startsWith("image/")) {
-      try { text = await readImage(file); }
-      catch (e) { throw new Error("La lecture des photos n'est pas disponible ici. Utilise le PDF, ou recopie les lignes avec « Coller le texte »."); }
-    } else throw new Error("Format non pris en charge. Utilise un PDF ou une image.");
-    analyse(text, "Fiche « " + file.name + " » analysée. Vérifie les chiffres lus ci-dessous.");
-  } catch (e) {
-    setStatus(e.message || String(e), "err");
-  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -800,8 +852,7 @@ function checkCalculs(v, P) {
 
   // Heures supplémentaires : réduction de cotisations + exonération d'impôt
   if (hsTot > 0 && has("brut")) {
-    const n = norm(STATE.text);
-    const hasRed = /reduction (de )?cotisations? salariales?|heures? sup[a-z.]*\s.*(exoner|reduc|deduc)|(exoneration|reduction|deduction).*heures? sup|loi tepa|\brcs\b/.test(n);
+    const hasRed = hsReductionPresent(STATE.text);
     const T = v.brut / ((has("heures") ? v.heures : 151.67 + hsTot) + h25 * 0.25 + h50 * 0.5);
     const hsPay = r2(T * (h25 * 1.25 + h50 * 1.5));
     const gainNet = r2(hsPay * 0.1131);
@@ -985,45 +1036,246 @@ function renderLines(lines) {
   $("lignes-count").textContent = rows.length ? rows.length + " lignes chiffrées" : "";
 }
 
+/* ------------------------------------------------------------------ */
+/* Plusieurs fiches                                                    */
+/* ------------------------------------------------------------------ */
+const MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+const INDEM = [
+  { id: "panier", label: "Panier repas" },
+  { id: "casse", label: "Casse-croûte" },
+  { id: "unique", label: "Repas unique / spécial" },
+  { id: "autre", label: "Autre indemnité (déplacement…)" },
+];
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("fichepaie." + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem("fichepaie." + k, JSON.stringify(v)); } catch (e) { /* stockage indisponible */ } },
+};
+STATE.docs = []; STATE.cur = -1; STATE.units = store.get("units", {});
+
+function parseStart(f) {
+  const m = (f._periode || "").match(/du (\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (!m) return null;
+  let y = +m[3]; if (y < 100) y += 2000;
+  return new Date(y, +m[2] - 1, +m[1]);
+}
+function makeDoc(name, text, example) {
+  const { lines, f } = extract(text);
+  const start = parseStart(f);
+  const values = {}; FIELDS.forEach((fd) => values[fd.id] = f[fd.id] ?? null);
+  return {
+    name, text, lines, f, values, example: !!example, start,
+    label: start ? MOIS[start.getMonth()].replace(/^./, (c) => c.toUpperCase()) + " " + start.getFullYear() : name.replace(/\.pdf$/i, ""),
+    flags: { cadre: !!f._cadre, alsace: !!f._alsace, plafondHS: false },
+    counts: {},
+  };
+}
+function addDocs(newDocs) {
+  if (newDocs.some((d) => !d.example)) STATE.docs = STATE.docs.filter((d) => !d.example);
+  for (const d of newDocs) {
+    const same = STATE.docs.findIndex((x) => x.text === d.text);
+    if (same >= 0) STATE.docs.splice(same, 1);
+    STATE.docs.push(d);
+  }
+  STATE.docs.sort((a, b) => (a.start ? a.start.getTime() : Infinity) - (b.start ? b.start.getTime() : Infinity));
+  const latest = newDocs.slice().sort((a, b) => (b.start ? b.start.getTime() : 0) - (a.start ? a.start.getTime() : 0))[0];
+  selectDoc(STATE.docs.indexOf(latest));
+}
+function removeDoc(i) {
+  STATE.docs.splice(i, 1);
+  if (!STATE.docs.length) { addDocs([makeDoc("Exemple", EXAMPLE, true)]); setStatus("Exemple fictif rechargé.", "example"); return; }
+  selectDoc(Math.min(i, STATE.docs.length - 1));
+}
+function curDoc() { return STATE.docs[STATE.cur]; }
+
+function renderMonths() {
+  const el = $("months");
+  if (STATE.docs.length < 2 && (!STATE.docs[0] || STATE.docs[0].example)) { el.innerHTML = ""; return; }
+  el.innerHTML = STATE.docs.map((d, i) => `<button type="button" role="tab" aria-selected="${i === STATE.cur}" data-i="${i}">${esc(d.label)}<span class="x" data-del="${i}" title="Retirer cette fiche" aria-label="Retirer ${esc(d.label)}">✕</span></button>`).join("");
+}
+
+function selectDoc(i) {
+  STATE.cur = i;
+  const d = curDoc();
+  STATE.text = d.text; STATE.lines = d.lines;
+  STATE.found = {}; FIELDS.forEach((fd) => STATE.found[fd.id] = d.f[fd.id] ?? null);
+  FIELDS.forEach((fd) => { const v = d.values[fd.id]; $("f-" + fd.id).value = v != null ? String(v).replace(".", ",") : ""; });
+  $("f-cadre").checked = d.flags.cadre; $("f-alsace").checked = d.flags.alsace; $("f-plafondHS").checked = d.flags.plafondHS;
+  STATE.meta = { impoFromPas: !!d.f._impoFromPas };
+  $("periode-lue").textContent = d.f._periode || d.label;
+  $("raw").textContent = d.text;
+  renderLines(d.lines);
+  renderIndemForm();
+  renderMonths();
+  recompute();
+}
+
+/* ------------------------------------------------------------------ */
+/* Paniers et indemnités                                               */
+/* ------------------------------------------------------------------ */
+function renderIndemForm() {
+  const d = curDoc();
+  $("indem").innerHTML = `<span class="h">Indemnité</span><span class="h">Nombre ce mois</span><span class="h">Montant unitaire (€)</span><span class="h tot">Total</span>` +
+    INDEM.map((it) => `<label for="n-${it.id}">${it.label}</label><input id="n-${it.id}" inputmode="decimal" value="${d.counts[it.id] ?? ""}"><input id="u-${it.id}" inputmode="decimal" aria-label="Montant unitaire ${it.label}" value="${STATE.units[it.id] != null ? String(STATE.units[it.id]).replace(".", ",") : ""}"><span class="tot" id="t-${it.id}"></span>`).join("");
+  INDEM.forEach((it) => {
+    $("n-" + it.id).addEventListener("input", () => { const v = readVal("n-" + it.id); if (v == null) delete curDoc().counts[it.id]; else curDoc().counts[it.id] = v; recompute(); });
+    $("u-" + it.id).addEventListener("input", () => { const v = readVal("u-" + it.id); if (v == null) delete STATE.units[it.id]; else STATE.units[it.id] = v; store.set("units", STATE.units); recompute(); });
+  });
+}
+function indemTotal(d) {
+  let tot = 0, any = false, missingUnit = false;
+  for (const it of INDEM) {
+    const n = d.counts[it.id]; if (!n) continue; any = true;
+    const u = STATE.units[it.id]; if (u == null) { missingUnit = true; continue; }
+    tot += n * u;
+  }
+  return { tot: r2(tot), any, missingUnit };
+}
+function checkIndem(d, v) {
+  INDEM.forEach((it) => { const n = d.counts[it.id], u = STATE.units[it.id]; const el = $("t-" + it.id); if (el) el.textContent = n && u != null ? eur(n * u) : ""; });
+  const ns = v.nonSoumis;
+  const { tot, any, missingUnit } = indemTotal(d);
+  const out = [];
+  const detailed = /panier|repas|casse[- ]?croute|deplacement|kilometr/.test(norm(d.text));
+  if (!any) {
+    out.push({ s: "info", t: "Indique tes paniers du mois", d: ns != null ? "La fiche te verse " + eur(ns) + " d'indemnités" + (detailed ? "." : " sans dire à quoi elles correspondent.") + " Remplis le nombre de paniers et leur montant unitaire pour vérifier." : "Aucune indemnité n'apparaît sur cette fiche. Si tu as eu droit à des paniers ce mois-ci, remplis le nombre et le montant pour voir ce qu'il manque." });
+    return out;
+  }
+  if (missingUnit) {
+    const onlyPanier = INDEM.filter((it) => d.counts[it.id]).length === 1;
+    const k = INDEM.find((it) => d.counts[it.id]);
+    out.push({ s: "info", t: "Montant unitaire manquant", d: "Indique le montant unitaire (barème de ta convention collective)." + (onlyPanier && ns ? " En attendant : " + eur(ns) + " ÷ " + d.counts[k.id] + " = <b>" + eur(ns / d.counts[k.id]) + "</b> par " + k.label.toLowerCase() + ", à comparer avec le barème." : "") });
+    return out;
+  }
+  if (ns == null || ns === 0) {
+    out.push({ s: "bad", t: "Indemnités non versées", d: "Tu as compté " + eur(tot) + " d'indemnités, mais la fiche n'en verse aucune. Demande une régularisation à ton employeur." });
+  } else {
+    const diff = r2(ns - tot);
+    if (near(diff, 0, 0.05)) out.push({ s: "ok", t: "Paniers bien payés", d: "Tu as compté " + eur(tot) + ", la fiche verse " + eur(ns) + "." });
+    else if (diff < 0) out.push({ s: "bad", t: "Il manque " + eur(-diff) + " d'indemnités", d: "D'après tes chiffres, tu aurais dû recevoir <b>" + eur(tot) + "</b>, mais la fiche ne verse que " + eur(ns) + ". Vérifie ton décompte, puis demande une régularisation à ton employeur." });
+    else out.push({ s: "info", t: "La fiche verse " + eur(diff) + " de plus que ton décompte", d: "Tu as compté " + eur(tot) + " et la fiche verse " + eur(ns) + ". Il y a peut-être une autre indemnité (déplacement, indemnité de nuit…) que tu n'as pas notée." });
+  }
+  if (!detailed) out.push({ s: "warn", t: "Paniers non détaillés sur la fiche", d: "La fiche n'affiche qu'un total. Le Code du travail (art. R3243-1) impose d'indiquer la nature et le montant de chaque indemnité : une ligne par type de panier, avec le nombre et le montant." });
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
+/* Comparaison sur plusieurs mois                                      */
+/* ------------------------------------------------------------------ */
+function hsReductionPresent(text) {
+  return /reduction (de )?cotisations? salariales?|heures? sup[a-z.]*\s.*(exoner|reduc|deduc)|(exoneration|reduction|deduction).*heures? sup|loi tepa|\brcs\b/.test(norm(text));
+}
+function hsEstimate(v) {
+  const h25 = v.hs25 || 0, h50 = v.hs50 || 0, hsTot = h25 + h50;
+  if (!hsTot || !(v.brut > 0)) return { hsTot, hsPay: 0, gainNet: 0 };
+  const T = v.brut / ((v.heures != null ? v.heures : 151.67 + hsTot) + h25 * 0.25 + h50 * 0.5);
+  const hsPay = r2(T * (h25 * 1.25 + h50 * 1.5));
+  return { hsTot, hsPay, gainNet: r2(hsPay * 0.1131) };
+}
+function docMetrics(d, P) {
+  const v = d.values, ns = v.nonSoumis || 0;
+  const hs = hsEstimate(v);
+  let exo = null;
+  if (v.netAvant != null && v.netImpo != null && v.brut != null) {
+    const nd = v.brut * P.abattCSG / 100 * 0.029;
+    exo = Math.max(0, r2((v.netAvant - ns + nd) - v.netImpo));
+    if (exo < 5) exo = 0;
+  }
+  return { ...hs, red: hsReductionPresent(d.text), exo, ns };
+}
+function renderMulti(P) {
+  const docs = STATE.docs.filter((d) => !d.example);
+  $("sec-multi").hidden = docs.length < 2;
+  if (docs.length < 2) return;
+  const fr = (h) => h == null ? "—" : h.toLocaleString("fr-FR", { maximumFractionDigits: 2 });
+  const M = docs.map((d) => ({ d, m: docMetrics(d, P) }));
+  $("multi-rows").innerHTML = M.map(({ d, m }) => `<tr><td>${esc(d.label)}</td><td class="n">${eur(d.values.brut)}</td><td class="n">${fr(d.values.heures)}</td><td class="n">${m.hsTot ? fr(m.hsTot) : "—"}</td><td>${m.hsTot ? (m.red ? '<span class="pill ok">oui</span>' : '<span class="pill bad">non</span>') : "—"}</td><td class="n">${m.exo == null ? "—" : eur(m.exo)}</td><td class="n">${eur(d.values.nonSoumis)}</td><td class="n">${eur(d.values.netSocial)}</td><td class="n">${eur(d.values.netPaye)}</td></tr>`).join("");
+  const out = [];
+  const withHS = M.filter((x) => x.m.hsTot > 0);
+  const noRed = withHS.filter((x) => !x.m.red);
+  if (withHS.length) {
+    if (!noRed.length) out.push({ s: "ok", t: "Réduction de cotisations sur les heures sup", d: "Présente sur les " + withHS.length + " fiches avec heures sup." });
+    else {
+      const lost = r2(noRed.reduce((a, x) => a + x.m.gainNet, 0));
+      out.push({ s: "bad", t: "Réduction de cotisations heures sup absente sur " + noRed.length + " mois sur " + withHS.length, d: "Mois concernés : <b>" + noRed.map((x) => x.d.label).join(", ") + "</b>." + (noRed.length < withHS.length ? " Elle apparaît sur les autres mois : son absence ressemble à une erreur de déclaration." : "") + " Manque estimé au total : ≈ <b>" + eur(lost) + "</b> de net (11,31 % de la rémunération des heures sup, sans plafond annuel)." });
+    }
+  }
+  const exoKnown = M.filter((x) => x.m.exo != null);
+  if (exoKnown.length && withHS.length) {
+    let cum = 0, capMonth = null;
+    for (const x of exoKnown) { cum += x.m.exo; if (cum >= 7400 && !capMonth) capMonth = x.d.label; }
+    const zeroExo = exoKnown.filter((x) => x.m.hsTot > 0 && x.m.exo === 0);
+    out.push({ s: "info", t: "Heures sup défiscalisées sur les fiches chargées : ≈ " + eur(r2(cum)), d: "Calculé mois par mois à partir de l'écart entre le net avant impôt et la base de l'impôt. Plafond annuel : 7 500 €." + (capMonth ? " Le plafond semble atteint en " + capMonth + "." : " Si tu n'as pas chargé toutes les fiches de l'année, le cumul réel est plus élevé.") + (zeroExo.length ? " Pas d'exonération en : " + zeroExo.map((x) => x.d.label).join(", ") + (capMonth ? "." : " : normal seulement si le plafond était déjà atteint (fiches de début d'année non chargées).") : "") });
+  }
+  const socialBad = M.filter((x) => x.m.ns > 0 && x.d.values.netSocial != null && x.d.values.netAvant != null && near(x.d.values.netSocial, x.d.values.netAvant, 0.05));
+  if (socialBad.length) out.push({ s: "warn", t: "Net social incluant les indemnités sur " + socialBad.length + " mois", d: "Mois : " + socialBad.map((x) => x.d.label).join(", ") + ". Écart total ≈ " + eur(socialBad.reduce((a, x) => a + x.m.ns, 0)) + " de revenus en trop déclarés à la CAF si ces indemnités sont des frais." });
+  const indem = docs.map((d) => ({ d, t: indemTotal(d) })).filter((x) => x.t.any && !x.t.missingUnit);
+  if (indem.length) {
+    const diff = r2(indem.reduce((a, x) => a + (x.d.values.nonSoumis || 0) - x.t.tot, 0));
+    out.push({ s: diff < -0.05 ? "bad" : "ok", t: "Paniers sur " + indem.length + " mois", d: diff < -0.05 ? "Il manque au total ≈ <b>" + eur(-diff) + "</b> par rapport à ton décompte." : "Les montants versés couvrent ton décompte." });
+  }
+  renderChecks("checks-multi", "count-multi", out);
+}
+
+/* ------------------------------------------------------------------ */
+/* Recalcul                                                            */
+/* ------------------------------------------------------------------ */
 function recompute() {
   const { v, P } = getValues();
+  const d = curDoc();
+  if (d) { FIELDS.forEach((f) => d.values[f.id] = v[f.id]); d.flags = { cadre: v.cadre, alsace: v.alsace, plafondHS: v.plafondHS }; }
   FIELDS.forEach((f) => $("f-" + f.id).classList.toggle("found", STATE.found[f.id] != null && readVal("f-" + f.id) === STATE.found[f.id]));
   renderSummary(v);
   const calc = checkCalculs(v, P), cotis = checkCotisations(STATE.lines, v, P), ment = checkMentions(STATE.text);
+  const indem = d ? checkIndem(d, v) : [];
   renderChecks("checks-calc", "count-calc", calc);
   renderChecks("checks-cotis", "count-cotis", cotis);
   renderChecks("checks-mentions", "count-mentions", ment);
-  STATE.results = { calc, cotis, ment, v };
+  renderChecks("checks-indem", "count-indem", indem);
+  renderMulti(P);
+  STATE.results = { calc, cotis, ment, indem, v };
 }
 
-function analyse(text, msg, kind) {
-  STATE.text = text;
-  const { lines, f } = extract(text);
-  STATE.lines = lines;
-  STATE.found = {};
-  FIELDS.forEach((fd) => {
-    const val = f[fd.id];
-    STATE.found[fd.id] = val ?? null;
-    $("f-" + fd.id).value = val != null ? String(val).replace(".", ",") : "";
-  });
-  $("f-cadre").checked = !!f._cadre; $("f-alsace").checked = !!f._alsace;
-  STATE.meta = { impoFromPas: !!f._impoFromPas };
-  $("periode-lue").textContent = f._periode;
-  $("raw").textContent = text;
-  renderLines(lines);
-  recompute();
+function analyse(text, msg, kind, name) {
+  addDocs([makeDoc(name || "Texte collé", text, kind === "example")]);
   setStatus(msg, kind);
 }
 
+async function readFileText(file) {
+  if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) return readPdf(file);
+  if (file.type.startsWith("image/")) {
+    try { return await readImage(file); }
+    catch (e) { throw new Error("la lecture des photos n'est pas disponible ici, utilise le PDF"); }
+  }
+  throw new Error("format non pris en charge (PDF ou image)");
+}
+async function handleFiles(files) {
+  files = Array.from(files || []); if (!files.length) return;
+  const docs = [], errs = [];
+  for (const [i, file] of files.entries()) {
+    setStatus("Lecture de « " + file.name + " » (" + (i + 1) + "/" + files.length + ")…");
+    try { docs.push(makeDoc(file.name, await readFileText(file))); }
+    catch (e) { errs.push(file.name + " : " + (e.message || e)); }
+  }
+  if (docs.length) addDocs(docs);
+  const ok = docs.length ? docs.length + (docs.length > 1 ? " fiches analysées" : " fiche analysée") + ". Vérifie les chiffres lus ci-dessous." : "";
+  setStatus([ok, errs.length ? "Non lues : " + errs.join(" ; ") : ""].filter(Boolean).join(" "), errs.length && !docs.length ? "err" : "");
+}
+
+/* ------------------------------------------------------------------ */
+/* Rapport                                                             */
+/* ------------------------------------------------------------------ */
 function reportText() {
   const R = STATE.results; if (!R) return "";
   const strip = (h) => h.replace(/<[^>]+>/g, "");
-  const sect = (title, arr) => title + "\n" + arr.filter((c) => c.s === "bad" || c.s === "warn").map((c) => "- " + c.t + " : " + strip(c.d)).join("\n");
+  const bad = (arr) => arr.filter((c) => c.s === "bad" || c.s === "warn").map((c) => "- " + c.t + " : " + strip(c.d)).join("\n");
   const missing = R.ment.filter((c) => c.s === "bad").map((c) => "- " + c.t).join("\n");
+  const multi = STATE.docs.filter((d) => !d.example).length > 1 ? bad(Array.from(document.querySelectorAll("#checks-multi li")).map((li) => ({ s: li.className, t: li.querySelector(".title").textContent, d: li.querySelector(".detail").innerHTML }))) : "";
   return [
     "Analyse de ma fiche de paie" + ($("periode-lue").textContent ? " (" + $("periode-lue").textContent + ")" : ""),
     "",
-    sect("Points de calcul à vérifier :", R.calc.concat(R.cotis)) || "",
+    "Points à vérifier :",
+    bad(R.calc.concat(R.cotis, R.indem)) || "- aucun",
+    multi ? "\nSur plusieurs mois :\n" + multi : "",
     "",
     "Mentions obligatoires (art. R3243-1 du Code du travail) que je ne trouve pas :",
     missing || "- aucune",
@@ -1033,22 +1285,167 @@ function reportText() {
 }
 
 /* ------------------------------------------------------------------ */
+/* Analyse détaillée par Claude                                        */
+/* ------------------------------------------------------------------ */
+function anonymize(text) {
+  const out = []; let skip = 0;
+  for (const raw of text.split("\n")) {
+    const n = norm(raw);
+    if (skip > 0) { skip--; if (/\d{5}|rue|avenue|chemin|bd|boulevard|allee|impasse|place|^\d/.test(n) || skip === 0) continue; }
+    if (/^(monsieur|madame|mme|m\.)\s/.test(n)) { skip = 2; continue; }
+    out.push(raw
+      .replace(/(pr[ée]nom|nom)\s*:\s*[^\s].*?(?=\s{3}|$)/gi, "$1 : [masqué]")
+      .replace(/(n°\s*s[ée]curit[ée] sociale\s*:?)\s*[\d\s]+/gi, "$1 [masqué]")
+      .replace(/\b[12]\s?\d{2}\s?\d{2}\s?\d{2}\s?\d{3}\s?\d{3}(\s?\d{2})?\b/g, "[n° sécu masqué]"));
+  }
+  return out.join("\n");
+}
+function buildDataBlock() {
+  const P = getValues().P;
+  const docs = STATE.docs;
+  return docs.map((d) => {
+    const vals = FIELDS.filter((f) => d.values[f.id] != null).map((f) => "- " + f.label + " : " + String(d.values[f.id]).replace(".", ",")).join("\n");
+    const indem = INDEM.filter((it) => d.counts[it.id]).map((it) => "- " + it.label + " : " + d.counts[it.id] + " × " + (STATE.units[it.id] != null ? eur(STATE.units[it.id]) : "montant non indiqué")).join("\n");
+    const flags = [d.flags.cadre ? "cadre" : "non cadre", d.flags.alsace ? "Alsace-Moselle" : "", d.flags.plafondHS ? "le salarié indique avoir déjà dépassé le plafond de 7 500 € d'heures sup exonérées d'impôt cette année" : ""].filter(Boolean).join(" ; ");
+    return "=== FICHE : " + d.label + (d.example ? " (EXEMPLE FICTIF)" : "") + " ===\n" +
+      "Texte extrait du PDF (anonymisé) :\n" + anonymize(d.text).slice(0, 14000) + "\n\n" +
+      "Chiffres retenus (lus automatiquement puis éventuellement corrigés par le salarié) :\n" + vals + "\n" +
+      "Situation : " + flags + "\n" +
+      (indem ? "Décompte du salarié pour ses indemnités ce mois-ci :\n" + indem + "\n" : "Le salarié n'a pas indiqué son décompte de paniers pour ce mois.\n");
+  }).join("\n\n") + "\n\nParamètres utilisés par l'outil : SMIC horaire " + eur(P.smic) + ", PMSS " + eur(P.pmss) + ".";
+}
+function localFindings() {
+  const R = STATE.results; if (!R) return "";
+  const strip = (h) => h.replace(/<[^>]+>/g, "");
+  const list = (arr) => arr.filter((c) => c.s !== "ok").map((c) => "- [" + STATUS_LABEL[c.s] + "] " + c.t + " : " + strip(c.d)).join("\n");
+  const multi = Array.from(document.querySelectorAll("#checks-multi li")).map((li) => "- " + li.querySelector(".title").textContent + " : " + li.querySelector(".detail").textContent).join("\n");
+  return "Constats de l'outil automatique pour la fiche affichée (" + curDoc().label + ") :\n" + list(R.calc.concat(R.cotis, R.indem, R.ment)) + (multi ? "\n\nConstats sur plusieurs mois :\n" + multi : "");
+}
+const AI_RULES = `Tu es un expert de la paie en France (règles 2026), au service d'un salarié qui a du mal à lire ses fiches de paie. Tu tutoies, tu écris en français simple, sans jargon (ou en l'expliquant).
+
+Ta mission : analyser les fiches de paie ci-dessous et dire clairement ce qui est juste, ce qui est faux ou manquant, et ce que le salarié doit faire.
+
+Règles :
+- Vérifie les calculs toi-même (base × taux = montant, totaux, net avant impôt, net imposable, impôt, net payé, net social).
+- Vérifie les mentions obligatoires (art. R3243-1 du Code du travail, bulletin clarifié), le détail du brut, les heures (h/min ↔ centièmes), les heures supplémentaires (réduction de cotisations salariales sans plafond annuel ; exonération d'impôt plafonnée à 7 500 € par an), les indemnités et paniers (nature et montant obligatoires), le montant net social (les remboursements de frais professionnels n'y entrent pas), les taux et la répartition des cotisations.
+- Tiens compte de la convention collective et de l'emploi indiqués sur la fiche. Si tu cites un montant de barème conventionnel (panier, minimum de salaire…), précise que c'est à confirmer dans le texte en vigueur si tu n'es pas certain du chiffre exact pour 2026. N'invente jamais un chiffre.
+- Si plusieurs mois sont fournis, compare-les (ce qui change d'un mois à l'autre, ce qui manque certains mois, cumuls).
+- Sépare bien ce qui est certain, ce qui est probable et ce qui est à vérifier. Chiffre les sommes en jeu quand c'est possible.
+- Les constats de l'outil automatique sont des pistes, pas des vérités : confirme-les ou corrige-les.
+
+Réponds en Markdown avec exactement ces parties :
+## En bref
+(3 à 5 phrases)
+## Ce qui est juste
+## Ce qui pose problème
+(du plus important au moins important, avec les montants en jeu)
+## Questions à poser à ton employeur
+## Mail prêt à envoyer
+(un mail court et poli, au vouvoiement, sans nom ni signature à remplir autrement que [Prénom Nom])`;
+
+function mdToHtml(md) {
+  const lines = esc(md).split("\n");
+  const out = []; let list = null, inPre = false, pre = [];
+  const inline = (s) => s.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code class=\"src\">$1</code>");
+  const close = () => { if (list) { out.push("</" + list + ">"); list = null; } };
+  for (const l of lines) {
+    if (/^```/.test(l)) { if (inPre) { out.push("<pre>" + pre.join("\n") + "</pre>"); pre = []; inPre = false; } else { close(); inPre = true; } continue; }
+    if (inPre) { pre.push(l); continue; }
+    let m;
+    if ((m = l.match(/^#{1,4}\s+(.*)/))) { close(); out.push("<h3>" + inline(m[1]) + "</h3>"); }
+    else if ((m = l.match(/^\s*[-*]\s+(.*)/))) { if (list !== "ul") { close(); out.push("<ul>"); list = "ul"; } out.push("<li>" + inline(m[1]) + "</li>"); }
+    else if ((m = l.match(/^\s*\d+[.)]\s+(.*)/))) { if (list !== "ol") { close(); out.push("<ol>"); list = "ol"; } out.push("<li>" + inline(m[1]) + "</li>"); }
+    else if (!l.trim()) close();
+    else if (/^&gt;\s?/.test(l)) { close(); out.push("<p class=\"muted\">" + inline(l.replace(/^&gt;\s?/, "")) + "</p>"); }
+    else { close(); out.push("<p>" + inline(l) + "</p>"); }
+  }
+  if (inPre) out.push("<pre>" + pre.join("\n") + "</pre>");
+  close();
+  return out.join("");
+}
+
+const AI = { sample: null, turns: [], ctl: null, busy: false, html: [] };
+const AI_ERR = {
+  not_granted: "Tu n'as pas autorisé la page à utiliser Claude. Les vérifications automatiques ci-dessus restent disponibles.",
+  sampling_disabled: "Claude n'est pas disponible pour ton compte.",
+  rate_limited: "Trop de demandes pour l'instant. Réessaie dans quelques minutes.",
+  session_expired: "Ta session a expiré : reconnecte-toi à Claude puis réessaie.",
+  prompt_too_large: "Trop de fiches d'un coup. Retire quelques mois et réessaie.",
+  refused: "Claude n'a pas pu répondre à cette demande.",
+};
+function aiRender(partial) {
+  $("ai-out").innerHTML = AI.html.join("") + (partial ?? "");
+}
+async function aiCall(turns, tier) {
+  AI.busy = true; AI.ctl = new AbortController();
+  $("ai-run").disabled = true; $("ai-send").disabled = true; $("ai-stop").hidden = false;
+  aiRender('<p class="thinking">Claude lit tes fiches… (cela peut prendre une à deux minutes)</p>');
+  try {
+    const { text, truncated } = await AI.sample(turns, { modelTier: tier, cache: false, signal: AI.ctl.signal, onText: ({ text }) => aiRender("<div>" + mdToHtml(text) + "</div>") });
+    AI.turns.push({ role: "assistant", content: text });
+    AI.html.push("<div>" + mdToHtml(text) + (truncated ? '<p class="muted">Réponse coupée : pose une question plus précise pour la suite.</p>' : "") + "</div>");
+    aiRender(); $("ai-ask").hidden = false;
+  } catch (e) {
+    AI.turns.pop();
+    const keep = e.text ? "<div>" + mdToHtml(e.text) + "</div>" : "";
+    if (e.text && e.code !== "refused") AI.html.push(keep);
+    aiRender(e.code === "cancelled" ? "" : '<p class="status err">' + esc(AI_ERR[e.code] || "La connexion à Claude a échoué. Réessaie.") + "</p>");
+    if (e.code === "not_granted" || e.code === "sampling_disabled") $("ai-run").hidden = true;
+  } finally {
+    AI.busy = false; $("ai-run").disabled = false; $("ai-send").disabled = false; $("ai-stop").hidden = true;
+  }
+}
+function aiPrompt() {
+  return AI_RULES + "\n\n---\nFICHES DE PAIE\n\n" + buildDataBlock() + "\n\n---\n" + localFindings();
+}
+function setupAI() {
+  $("ai-preview").textContent = "";
+  $("sec-ai").querySelector("details").addEventListener("toggle", (e) => { if (e.target.open) $("ai-preview").textContent = aiPrompt(); });
+  $("ai-run").disabled = true;
+  $("ai-intro").insertAdjacentHTML("afterend", '<p class="muted small" id="ai-wait">Connexion à Claude…</p>');
+  (window.claude && window.claude.use ? window.claude.use("sample") : Promise.resolve(null)).then((s) => {
+    $("ai-wait").remove();
+    if (!s) { $("ai-run").hidden = true; $("ai-intro").textContent = "L'analyse détaillée par Claude n'est disponible que lorsque cette page est ouverte depuis claude.ai. Les vérifications automatiques restent disponibles."; return; }
+    AI.sample = s; $("ai-run").disabled = false;
+  }, () => { $("ai-wait").remove(); $("ai-run").hidden = true; });
+  $("ai-run").addEventListener("click", () => {
+    if (!AI.sample || AI.busy) return;
+    AI.turns = [{ role: "user", content: aiPrompt() }]; AI.html = [];
+    aiCall(AI.turns, "complex");
+  });
+  $("ai-send").addEventListener("click", () => {
+    const q = $("ai-question").value.trim(); if (!q || !AI.sample || AI.busy) return;
+    AI.turns.push({ role: "user", content: q });
+    AI.html.push('<p class="chat-q">' + esc(q) + "</p>");
+    $("ai-question").value = "";
+    aiCall(AI.turns, "default");
+  });
+  $("ai-stop").addEventListener("click", () => AI.ctl?.abort());
+}
+
+/* ------------------------------------------------------------------ */
 /* Événements                                                          */
 /* ------------------------------------------------------------------ */
 buildForm();
-$("file").addEventListener("change", (e) => handleFile(e.target.files[0]));
+$("file").addEventListener("change", (e) => { handleFiles(e.target.files); e.target.value = ""; });
 const drop = $("drop");
 ["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
 ["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
-drop.addEventListener("drop", (e) => handleFile(e.dataTransfer.files[0]));
+drop.addEventListener("drop", (e) => handleFiles(e.dataTransfer.files));
+$("months").addEventListener("click", (e) => {
+  const del = e.target.closest("[data-del]");
+  if (del) { e.stopPropagation(); removeDoc(+del.dataset.del); return; }
+  const b = e.target.closest("[data-i]"); if (b) selectDoc(+b.dataset.i);
+});
 $("btn-paste").addEventListener("click", () => { $("paste-box").hidden = !$("paste-box").hidden; if (!$("paste-box").hidden) $("paste-area").focus(); });
 $("btn-analyse-paste").addEventListener("click", () => { const t = $("paste-area").value; if (t.trim()) analyse(t, "Texte collé analysé. Vérifie les chiffres lus ci-dessous."); });
-$("btn-example").addEventListener("click", () => analyse(EXAMPLE, "Exemple fictif chargé : ce ne sont pas tes chiffres. Dépose ta propre fiche pour l'analyser.", "example"));
+$("btn-example").addEventListener("click", () => { STATE.docs = []; analyse(EXAMPLE, "Exemple fictif chargé : ce ne sont pas tes chiffres. Dépose tes propres fiches pour les analyser.", "example", "Exemple"); });
 $("btn-copy").addEventListener("click", () => {
   const t = reportText();
   const fallback = () => { const ta = $("report-fallback"); ta.hidden = false; ta.value = t; ta.select(); $("copied").textContent = "Sélectionne le texte et copie-le."; };
   try { navigator.clipboard.writeText(t).then(() => { $("copied").textContent = "Rapport copié."; }, fallback); } catch (e) { fallback(); }
 });
+setupAI();
 
-analyse(EXAMPLE, "Exemple fictif chargé : ce ne sont pas tes chiffres. Dépose ta propre fiche pour l'analyser.", "example");
+analyse(EXAMPLE, "Exemple fictif chargé : ce ne sont pas tes chiffres. Dépose tes propres fiches pour les analyser.", "example", "Exemple");
 </script>
