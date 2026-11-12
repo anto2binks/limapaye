@@ -1,5 +1,5 @@
 /* Cache hors connexion de l'appli. Ne met en cache que le programme, jamais une fiche de paie. */
-const CACHE = "fichepaie-418d4ee82b22";
+const CACHE = "fichepaie-02bad3337fad";
 const FILES = ["./", "index.html", "manifest.webmanifest", "vendor/pdf.min.js", "vendor/pdf.worker.min.js",
   "icons/icon-192.png", "icons/icon-512.png", "icons/icon-maskable-512.png", "icons/apple-touch-icon.png"];
 
@@ -18,5 +18,9 @@ self.addEventListener("fetch", (e) => {
       .catch(() => caches.match("index.html")));
     return;
   }
-  e.respondWith(caches.match(req).then((hit) => hit || fetch(req)));
+  // Fichiers du programme (dont le moteur de lecture des photos, gardé après sa 1re utilisation)
+  e.respondWith(caches.match(req).then((hit) => hit || fetch(req).then((r) => {
+    if (r.ok && /\/vendor\//.test(new URL(req.url).pathname)) { const copy = r.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
+    return r;
+  })));
 });
