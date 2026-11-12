@@ -990,6 +990,25 @@ function checkCalculs(v, P) {
     out.push({ s: st, t: "Durée du travail", d });
   }
 
+  // Brut recalculé à partir du taux horaire du contrat, quand la fiche ne détaille pas le brut
+  if (hB == null && has("heures") && has("brut")) {
+    const hsAll = hsTot, baseH = r2(v.heures - hsAll);
+    if (!has("taux")) out.push({ s: "info", t: "Vérifier le brut sans le détail des lignes", d: "Ta fiche ne détaille pas le brut (pas de salaire de base, pas de montant par type d'heures). Indique le <b>taux horaire de ton contrat</b> dans « Taux horaire brut » (chiffres lus) : l'appli recalculera ton brut ligne par ligne et le comparera à " + eur(v.brut) + "." });
+    else {
+      const T = v.taux;
+      const rows = [[fh(baseH) + " de base × " + eur(T), baseH * T]];
+      if (HI.h25) rows.push([fh(HI.h25) + " à 25 % × " + eur(T * 1.25), HI.h25 * T * 1.25]);
+      if (HI.h50) rows.push([fh(HI.h50) + " à 50 % × " + eur(T * 1.5), HI.h50 * T * 1.5]);
+      if (HI.c10) rows.push([fh(HI.c10) + " compl. à 10 % × " + eur(T * 1.1), HI.c10 * T * 1.1]);
+      if (HI.c25) rows.push([fh(HI.c25) + " compl. à 25 % × " + eur(T * 1.25), HI.c25 * T * 1.25]);
+      const exp = r2(rows.reduce((a, x) => a + x[1], 0)), diff = r2(v.brut - exp);
+      const detail = rows.map((x) => x[0] + " = " + eur(r2(x[1]))).join("<br>") + "<br><b>Total attendu : " + eur(exp) + "</b> · brut de la fiche : " + eur(v.brut) + ".";
+      if (Math.abs(diff) <= Math.max(1, v.brut * 0.001)) out.push({ s: "ok", t: "Brut recalculé : il correspond", d: detail + (Math.abs(diff) > 0.05 ? "<br>Écart de " + eur(diff) + " : arrondis (taux horaire à 4 décimales, arrondi ligne par ligne)." : "") });
+      else if (diff > 0) out.push({ s: "info", t: "Le brut dépasse le calcul de " + eur(diff), d: detail + "<br>La différence vient sans doute de primes ou indemnités soumises à cotisations (dimanche, nuit, jours fériés, ancienneté…). Elles doivent apparaître chacune sur une ligne : demande le détail." });
+      else out.push({ s: "bad", t: "Il manque " + eur(-diff) + " brut", d: detail + "<br>Avec ton taux horaire, la fiche ne paie pas toutes les heures qu'elle indique. Vérifie le taux de ton contrat, puis demande le détail du brut." });
+    }
+  }
+
   if (has("brut") && has("totalSal") && has("netAvant")) {
     const e = r2(v.brut - v.totalSal + ns0);
     const formula = eur(v.brut) + " − " + eur(v.totalSal) + (ns0 ? " + " + eur(ns0) + " d'indemnités non soumises" : "");
@@ -1447,13 +1466,13 @@ function checkWeeks(d, v) {
   out.push({ s: "info", t: "Ce que tu as noté", d: W.detail.map((x) => x.label + " : " + fh(x.tot) + "" + (tag(x) ? " → " + tag(x) : "")).join(" · ") + "." });
   {
     const normal = W.normal, gap = r2(W.baseM - normal);
-    if (W.prorata) out.push({ s: "info", t: "Heures travaillées " + hhmm(W.worked) + " ≠ heures payées " + hhmm(W.expectedPaid) + " : c'est normal", d:
-      "<b>Heures travaillées</b> : " + fh(W.worked) + " = " + fh(normal) + " d'heures normales + " + fh(W.hs) + " d'heures sup.<br>" +
-      "<b>Heures payées</b> : base proratisée " + fh(W.baseM) + " + " + fh(W.hs) + " sup = <b>" + fh(W.expectedPaid) + "</b>.<br>" +
-      "Les heures normales ne sont pas payées une par une : elles sont couvertes par le salaire mensualisé (" + fh(W.baseFull) + " pour un mois complet, en moyenne 4,33 semaines). " +
-      "Le mois d'embauche, ce salaire est réduit au prorata des jours où tu n'étais pas là. " +
-      (normal > W.baseM ? "Tes " + fh(r2(normal - W.baseM)) + " d'heures normales « en plus » ne sont pas dues en supplément : ce mois compte " + W.prorata.all + " jours ouvrés, plus que la moyenne (≈ 21,7), et la mensualisation s'équilibre avec les mois plus courts. " : "") +
-      "Ce qui doit être payé en plus du salaire, ce sont <b>les heures sup</b> : c'est là qu'il faut comparer avec la fiche." });
+    if (W.prorata) out.push({ s: "info", t: "Heures travaillées " + hhmm(W.worked) + " ≠ heures payées " + hhmm(W.expectedPaid), d:
+      "<b>Tes " + fh(W.worked) + " travaillées se décomposent ainsi, semaine par semaine :</b><br>" +
+      "• heures jusqu'à " + fh(W.C) + " dans chaque semaine (ce ne sont pas des heures sup) : <b>" + fh(normal) + "</b><br>" +
+      "• heures au-delà de " + fh(W.C) + " dans chaque semaine (heures sup) : <b>" + fh(W.hs) + "</b><br>" +
+      "<b>Ce que la paie doit contenir :</b> le salaire de base proratisé, " + fh(W.baseM) + " (151,67 h − les jours avant ton arrivée), qui couvre toutes les heures du premier groupe, plus les " + fh(W.hs) + " d'heures sup majorées = <b>" + fh(W.expectedPaid) + "</b>.<br>" +
+      "Les " + fh(normal) + " et les " + fh(W.baseM) + " ne mesurent pas la même chose : les premières sont tes heures réelles sous " + fh(W.C) + " par semaine, les secondes sont le salaire mensualisé converti en heures. Les heures sup se comptent semaine par semaine, jamais par différence entre le total du mois et la base." +
+      (normal > W.baseM + 0.1 ? " La méthode de ton employeur (151,67 h − les heures des jours avant ton arrivée) est la plus courante. D'autres méthodes de proratisation (jours ouvrés, heures réellement travaillées) peuvent donner un peu plus, et ta convention collective peut en imposer une : demande laquelle est appliquée." : "") });
     else out.push({ s: "info", t: "Heures travaillées " + hhmm(W.worked) + " ≠ heures à payer " + hhmm(W.expectedPaid) + " : c'est normal", d:
       "<b>Heures travaillées</b> = la somme de tes semaines : " + fh(W.worked) + ".<br>" +
       "<b>Heures à payer</b> = ta base mensualisée " + fh(W.baseM) + (W.hc ? " + " + fh(W.hc) + " complémentaires" : "") + " + tes " + fh(W.hs) + " sup = <b>" + fh(W.expectedPaid) + "</b>.<br>" +
