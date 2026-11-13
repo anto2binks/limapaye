@@ -2,7 +2,7 @@
 # Génère :
 #  - index.html : l'appli web (installable sur l'écran d'accueil, fonctionne hors connexion via sw.js)
 #  - sw.js : cache hors connexion, versionné à chaque build
-#  - dist/fiche-paie.html : application en UN SEUL fichier (pdf.js intégré)
+#  - dist/limapaye.html : application en UN SEUL fichier (pdf.js intégré)
 cd "$(dirname "$0")"
 python3 - <<'PY'
 import hashlib
@@ -18,7 +18,7 @@ pwa = ('<link rel="manifest" href="manifest.webmanifest">\n'
        '<meta name="theme-color" content="#2f3fd0">\n'
        '<meta name="apple-mobile-web-app-capable" content="yes">\n'
        '<meta name="mobile-web-app-capable" content="yes">\n'
-       '<meta name="apple-mobile-web-app-title" content="Fiche de paie">\n'
+       '<meta name="apple-mobile-web-app-title" content="LIMAPAYE">\n'
        '<meta name="apple-mobile-web-app-status-bar-style" content="default">\n'
        '<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">\n'
        '<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">\n')
@@ -48,5 +48,5 @@ inline = ('<script id="pdfjs-worker-src" type="text/plain">' + worker + '</scrip
           '<script>' + lib + '</script>')
 import os
 os.makedirs("dist", exist_ok=True)
-open("dist/fiche-paie.html", "w", encoding="utf-8").write(head + "</head>\n<body>\n" + src.replace(tag, inline) + '\n<script>window.APP_BUILD = "' + stamp + '"; var vb = document.getElementById("app-build"); if (vb) vb.textContent = "Version du " + window.APP_BUILD;</script>' + foot)
+open("dist/limapaye.html", "w", encoding="utf-8").write(head + "</head>\n<body>\n" + src.replace(tag, inline) + '\n<script>window.APP_BUILD = "' + stamp + '"; var vb = document.getElementById("app-build"); if (vb) vb.textContent = "Version du " + window.APP_BUILD;</script>' + foot)
 PY

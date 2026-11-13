@@ -7,13 +7,13 @@
 <meta name="theme-color" content="#2f3fd0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Fiche de paie">
+<meta name="apple-mobile-web-app-title" content="LIMAPAYE">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 </head>
 <body>
-<title>Décodeur Fiche de Paie</title>
+<title>LIMAPAYE</title>
 <!-- © 2026 Antoine M.M – Tous droits réservés. Toute reproduction, copie, modification ou diffusion, totale ou partielle, sans autorisation écrite de l'auteur est interdite (voir LICENSE). -->
 <meta name="author" content="Antoine M.M">
 <meta name="copyright" content="© 2026 Antoine M.M – Tous droits réservés">
@@ -97,11 +97,12 @@ button:focus-visible, .btn:focus-visible, input:focus-visible, select:focus-visi
 #splash.out { opacity: 0; visibility: hidden; }
 #splash .sp-in { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
 #splash .sp-logo { width: 112px; height: 112px; border-radius: 26px; box-shadow: 0 12px 30px rgba(43, 51, 184, .35); animation: sp-pop .55s cubic-bezier(.2, .9, .3, 1.25) both; }
-#splash .sp-name { font: 800 24px/1.15 var(--font-display); letter-spacing: -0.01em; color: var(--fg); animation: sp-up .5s .15s ease both; }
+#splash .sp-name { font: 800 30px/1.1 var(--font-display); letter-spacing: 0.04em; color: var(--fg); animation: sp-up .5s .15s ease both; }
+#splash .sp-tag { font-size: 15px; color: var(--muted); margin-top: -6px; animation: sp-up .5s .22s ease both; }
 #splash .sp-sub { font-size: 12.5px; color: var(--muted); animation: sp-up .5s .3s ease both; }
 @keyframes sp-pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 @keyframes sp-up { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { #splash .sp-logo, #splash .sp-name, #splash .sp-sub { animation: none; } }
+@media (prefers-reduced-motion: reduce) { #splash .sp-logo, #splash .sp-name, #splash .sp-tag, #splash .sp-sub { animation: none; } }
 
 /* En-tête */
 .appbar { display: flex; align-items: center; gap: 12px; padding: 4px 2px; }
@@ -303,7 +304,8 @@ footer.legal strong { color: var(--fg); }
 <div id="splash" aria-hidden="true">
   <div class="sp-in">
     <img class="sp-logo" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj4gPGRlZnM+IDxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDE9IjAiIHkxPSIwIiB4Mj0iMSIgeTI9IjEiPiA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiM0NjU0ZTgiLz4gPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMmIzM2I4Ii8+IDwvbGluZWFyR3JhZGllbnQ+IDxsaW5lYXJHcmFkaWVudCBpZD0icCIgeDE9IjAiIHkxPSIwIiB4Mj0iMCIgeTI9IjEiPiA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiNmZmZmZmYiLz4gPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjZWVmMGZiIi8+IDwvbGluZWFyR3JhZGllbnQ+IDwvZGVmcz4gPHJlY3Qgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHJ4PSIxMTYiIGZpbGw9InVybCgjZykiLz4gPHBhdGggZD0iTTE1MCA4NmgxNThsNjYgNjZ2MjU4YTI4IDI4IDAgMCAxLTI4IDI4SDE1MGEyOCAyOCAwIDAgMS0yOC0yOFYxMTRhMjggMjggMCAwIDEgMjgtMjh6IiBmaWxsPSJ1cmwoI3ApIi8+IDxwYXRoIGQ9Ik0zMDggODZ2NDZhMjAgMjAgMCAwIDAgMjAgMjBoNDZ6IiBmaWxsPSIjYzljZGYzIi8+IDxyZWN0IHg9IjE2MCIgeT0iMTc4IiB3aWR0aD0iOTYiIGhlaWdodD0iMTYiIHJ4PSI4IiBmaWxsPSIjYjliZmRjIi8+PHJlY3QgeD0iMjgyIiB5PSIxNzgiIHdpZHRoPSI1OCIgaGVpZ2h0PSIxNiIgcng9IjgiIGZpbGw9IiMzOTQ2ZDYiLz4gPHJlY3QgeD0iMTYwIiB5PSIyMjIiIHdpZHRoPSIxMjAiIGhlaWdodD0iMTYiIHJ4PSI4IiBmaWxsPSIjYjliZmRjIi8+PHJlY3QgeD0iMzA0IiB5PSIyMjIiIHdpZHRoPSIzNiIgaGVpZ2h0PSIxNiIgcng9IjgiIGZpbGw9IiM5YWEyYzgiLz4gPHJlY3QgeD0iMTYwIiB5PSIyNjYiIHdpZHRoPSI4MCIgaGVpZ2h0PSIxNiIgcng9IjgiIGZpbGw9IiNiOWJmZGMiLz48cmVjdCB4PSIyOTIiIHk9IjI2NiIgd2lkdGg9IjQ4IiBoZWlnaHQ9IjE2IiByeD0iOCIgZmlsbD0iIzlhYTJjOCIvPiA8cmVjdCB4PSIxNjAiIHk9IjMxOCIgd2lkdGg9IjE4MCIgaGVpZ2h0PSI0IiByeD0iMiIgZmlsbD0iI2Q1ZDllZSIvPiA8cmVjdCB4PSIxNjAiIHk9IjM0MCIgd2lkdGg9IjcwIiBoZWlnaHQ9IjIwIiByeD0iMTAiIGZpbGw9IiMxNDFhMmUiLz4gPGNpcmNsZSBjeD0iMzYyIiBjeT0iMzg0IiByPSI3NCIgZmlsbD0iIzEyYTM1ZiIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjE0Ii8+IDxwYXRoIGQ9Ik0zMjcgMzg1bDI0IDI0IDQ3LTUwIiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMjAiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPiA8L3N2Zz4=" alt="" width="112" height="112">
-    <div class="sp-name">Décodeur<br>de fiche de paie</div>
+    <div class="sp-name">LIMAPAYE</div>
+    <div class="sp-tag">Ta fiche de paie, vérifiée et expliquée</div>
     <div class="sp-sub">© 2026 Antoine M.M</div>
   </div>
 </div>
@@ -320,7 +322,7 @@ footer.legal strong { color: var(--fg); }
 <div class="wrap">
   <header class="appbar">
     <span class="logo"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj4gPGRlZnM+IDxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDE9IjAiIHkxPSIwIiB4Mj0iMSIgeTI9IjEiPiA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiM0NjU0ZTgiLz4gPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMmIzM2I4Ii8+IDwvbGluZWFyR3JhZGllbnQ+IDxsaW5lYXJHcmFkaWVudCBpZD0icCIgeDE9IjAiIHkxPSIwIiB4Mj0iMCIgeTI9IjEiPiA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiNmZmZmZmYiLz4gPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjZWVmMGZiIi8+IDwvbGluZWFyR3JhZGllbnQ+IDwvZGVmcz4gPHJlY3Qgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHJ4PSIxMTYiIGZpbGw9InVybCgjZykiLz4gPHBhdGggZD0iTTE1MCA4NmgxNThsNjYgNjZ2MjU4YTI4IDI4IDAgMCAxLTI4IDI4SDE1MGEyOCAyOCAwIDAgMS0yOC0yOFYxMTRhMjggMjggMCAwIDEgMjgtMjh6IiBmaWxsPSJ1cmwoI3ApIi8+IDxwYXRoIGQ9Ik0zMDggODZ2NDZhMjAgMjAgMCAwIDAgMjAgMjBoNDZ6IiBmaWxsPSIjYzljZGYzIi8+IDxyZWN0IHg9IjE2MCIgeT0iMTc4IiB3aWR0aD0iOTYiIGhlaWdodD0iMTYiIHJ4PSI4IiBmaWxsPSIjYjliZmRjIi8+PHJlY3QgeD0iMjgyIiB5PSIxNzgiIHdpZHRoPSI1OCIgaGVpZ2h0PSIxNiIgcng9IjgiIGZpbGw9IiMzOTQ2ZDYiLz4gPHJlY3QgeD0iMTYwIiB5PSIyMjIiIHdpZHRoPSIxMjAiIGhlaWdodD0iMTYiIHJ4PSI4IiBmaWxsPSIjYjliZmRjIi8+PHJlY3QgeD0iMzA0IiB5PSIyMjIiIHdpZHRoPSIzNiIgaGVpZ2h0PSIxNiIgcng9IjgiIGZpbGw9IiM5YWEyYzgiLz4gPHJlY3QgeD0iMTYwIiB5PSIyNjYiIHdpZHRoPSI4MCIgaGVpZ2h0PSIxNiIgcng9IjgiIGZpbGw9IiNiOWJmZGMiLz48cmVjdCB4PSIyOTIiIHk9IjI2NiIgd2lkdGg9IjQ4IiBoZWlnaHQ9IjE2IiByeD0iOCIgZmlsbD0iIzlhYTJjOCIvPiA8cmVjdCB4PSIxNjAiIHk9IjMxOCIgd2lkdGg9IjE4MCIgaGVpZ2h0PSI0IiByeD0iMiIgZmlsbD0iI2Q1ZDllZSIvPiA8cmVjdCB4PSIxNjAiIHk9IjM0MCIgd2lkdGg9IjcwIiBoZWlnaHQ9IjIwIiByeD0iMTAiIGZpbGw9IiMxNDFhMmUiLz4gPGNpcmNsZSBjeD0iMzYyIiBjeT0iMzg0IiByPSI3NCIgZmlsbD0iIzEyYTM1ZiIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjE0Ii8+IDxwYXRoIGQ9Ik0zMjcgMzg1bDI0IDI0IDQ3LTUwIiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMjAiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPiA8L3N2Zz4=" alt="" width="44" height="44"></span>
-    <div class="titles"><h1>Décodeur de fiche de paie</h1><span class="sub">Vérifie ta paie en 1 minute · règles 2026</span></div>
+    <div class="titles"><h1>LIMAPAYE</h1><span class="sub">Ta fiche de paie, vérifiée et expliquée · règles 2026</span></div>
     <button type="button" class="chip" id="chip-secu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Privé</button>
   </header>
 
@@ -541,7 +543,7 @@ footer.legal strong { color: var(--fg); }
     </div>
   </details>
   <footer class="legal">
-    <span><strong>© 2026 Antoine M.M – Tous droits réservés.</strong></span>
+    <span><strong>LIMAPAYE · © 2026 Antoine M.M – Tous droits réservés.</strong></span>
     <span>Toute reproduction, copie, modification ou diffusion de cette application, totale ou partielle, sans autorisation écrite de l'auteur est interdite.</span>
     <span>Composants libres utilisés : pdf.js (licence Apache 2.0).</span>
     <span id="app-build"></span>
@@ -2518,7 +2520,7 @@ $("week-mode").addEventListener("change", (e) => { STATE.weekMode = e.target.val
 analyse(EXAMPLE, "Exemple fictif chargé : ce ne sont pas tes chiffres. Dépose tes propres fiches pour les analyser.", "example", "Exemple");
 </script>
 
-<script>window.APP_BUILD = "13/11/2026 12:05";
+<script>window.APP_BUILD = "13/11/2026 12:09";
 if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
   var hadController = !!navigator.serviceWorker.controller, reloaded = false;
   navigator.serviceWorker.addEventListener("controllerchange", function () { if (hadController && !reloaded) { reloaded = true; location.reload(); } });

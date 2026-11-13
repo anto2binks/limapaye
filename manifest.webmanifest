@@ -1,6 +1,6 @@
 {
-  "name": "Décodeur de fiche de paie",
-  "short_name": "Fiche de paie",
+  "name": "LIMAPAYE",
+  "short_name": "LIMAPAYE",
   "description": "Analyse ta fiche de paie : calculs, heures sup, congés, paniers et mentions obligatoires. Tout reste sur ton appareil.",
   "lang": "fr",
   "start_url": "./",
