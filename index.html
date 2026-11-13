@@ -92,10 +92,21 @@ a { color: var(--accent); }
 .eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
 button:focus-visible, .btn:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
+/* Écran d'ouverture */
+#splash { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: var(--bg); transition: opacity .35s ease, visibility .35s; padding: env(safe-area-inset-top, 0px) 16px env(safe-area-inset-bottom, 0px); }
+#splash.out { opacity: 0; visibility: hidden; }
+#splash .sp-in { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
+#splash .sp-logo { width: 112px; height: 112px; border-radius: 26px; box-shadow: 0 12px 30px rgba(43, 51, 184, .35); animation: sp-pop .55s cubic-bezier(.2, .9, .3, 1.25) both; }
+#splash .sp-name { font: 800 24px/1.15 var(--font-display); letter-spacing: -0.01em; color: var(--fg); animation: sp-up .5s .15s ease both; }
+#splash .sp-sub { font-size: 12.5px; color: var(--muted); animation: sp-up .5s .3s ease both; }
+@keyframes sp-pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes sp-up { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { #splash .sp-logo, #splash .sp-name, #splash .sp-sub { animation: none; } }
+
 /* En-tête */
 .appbar { display: flex; align-items: center; gap: 12px; padding: 4px 2px; }
-.appbar .logo { width: 44px; height: 44px; border-radius: 12px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; flex: none; }
-.appbar .logo svg { width: 26px; height: 26px; }
+.appbar .logo { width: 44px; height: 44px; border-radius: 11px; display: block; flex: none; overflow: hidden; box-shadow: 0 4px 12px rgba(43, 51, 184, .25); }
+.appbar .logo img { width: 44px; height: 44px; display: block; }
 .appbar .titles { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .appbar .sub { font-size: 13px; color: var(--muted); }
 .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ok); background: var(--ok-soft); border-radius: 999px; padding: 6px 10px; border: 0; cursor: pointer; white-space: nowrap; }
@@ -289,9 +300,26 @@ footer.legal strong { color: var(--fg); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
+<div id="splash" aria-hidden="true">
+  <div class="sp-in">
+    <img class="sp-logo" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj4gPGRlZnM+IDxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDE9IjAiIHkxPSIwIiB4Mj0iMSIgeTI9IjEiPiA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiM0NjU0ZTgiLz4gPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMmIzM2I4Ii8+IDwvbGluZWFyR3JhZGllbnQ+IDxsaW5lYXJHcmFkaWVudCBpZD0icCIgeDE9IjAiIHkxPSIwIiB4Mj0iMCIgeTI9IjEiPiA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiNmZmZmZmYiLz4gPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjZWVmMGZiIi8+IDwvbGluZWFyR3JhZGllbnQ+IDwvZGVmcz4gPHJlY3Qgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHJ4PSIxMTYiIGZpbGw9InVybCgjZykiLz4gPHBhdGggZD0iTTE1MCA4NmgxNThsNjYgNjZ2MjU4YTI4IDI4IDAgMCAxLTI4IDI4SDE1MGEyOCAyOCAwIDAgMS0yOC0yOFYxMTRhMjggMjggMCAwIDEgMjgtMjh6IiBmaWxsPSJ1cmwoI3ApIi8+IDxwYXRoIGQ9Ik0zMDggODZ2NDZhMjAgMjAgMCAwIDAgMjAgMjBoNDZ6IiBmaWxsPSIjYzljZGYzIi8+IDxyZWN0IHg9IjE2MCIgeT0iMTc4IiB3aWR0aD0iOTYiIGhlaWdodD0iMTYiIHJ4PSI4IiBmaWxsPSIjYjliZmRjIi8+PHJlY3QgeD0iMjgyIiB5PSIxNzgiIHdpZHRoPSI1OCIgaGVpZ2h0PSIxNiIgcng9IjgiIGZpbGw9IiMzOTQ2ZDYiLz4gPHJlY3QgeD0iMTYwIiB5PSIyMjIiIHdpZHRoPSIxMjAiIGhlaWdodD0iMTYiIHJ4PSI4IiBmaWxsPSIjYjliZmRjIi8+PHJlY3QgeD0iMzA0IiB5PSIyMjIiIHdpZHRoPSIzNiIgaGVpZ2h0PSIxNiIgcng9IjgiIGZpbGw9IiM5YWEyYzgiLz4gPHJlY3QgeD0iMTYwIiB5PSIyNjYiIHdpZHRoPSI4MCIgaGVpZ2h0PSIxNiIgcng9IjgiIGZpbGw9IiNiOWJmZGMiLz48cmVjdCB4PSIyOTIiIHk9IjI2NiIgd2lkdGg9IjQ4IiBoZWlnaHQ9IjE2IiByeD0iOCIgZmlsbD0iIzlhYTJjOCIvPiA8cmVjdCB4PSIxNjAiIHk9IjMxOCIgd2lkdGg9IjE4MCIgaGVpZ2h0PSI0IiByeD0iMiIgZmlsbD0iI2Q1ZDllZSIvPiA8cmVjdCB4PSIxNjAiIHk9IjM0MCIgd2lkdGg9IjcwIiBoZWlnaHQ9IjIwIiByeD0iMTAiIGZpbGw9IiMxNDFhMmUiLz4gPGNpcmNsZSBjeD0iMzYyIiBjeT0iMzg0IiByPSI3NCIgZmlsbD0iIzEyYTM1ZiIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjE0Ii8+IDxwYXRoIGQ9Ik0zMjcgMzg1bDI0IDI0IDQ3LTUwIiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMjAiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPiA8L3N2Zz4=" alt="" width="112" height="112">
+    <div class="sp-name">Décodeur<br>de fiche de paie</div>
+    <div class="sp-sub">© 2026 Antoine M.M</div>
+  </div>
+</div>
+<script>
+  // Écran d'ouverture : logo pendant environ une seconde, puis l'appli. Un toucher le fait disparaître tout de suite.
+  (function () {
+    var sp = document.getElementById("splash"); if (!sp) return;
+    var calme = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var fin = function () { if (!sp.parentNode) return; sp.classList.add("out"); setTimeout(function () { if (sp.parentNode) sp.parentNode.removeChild(sp); }, 400); };
+    sp.addEventListener("click", fin);
+    setTimeout(fin, calme ? 600 : 1200);
+  })();
+</script>
 <div class="wrap">
   <header class="appbar">
-    <span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></span>
+    <span class="logo"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj4gPGRlZnM+IDxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDE9IjAiIHkxPSIwIiB4Mj0iMSIgeTI9IjEiPiA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiM0NjU0ZTgiLz4gPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMmIzM2I4Ii8+IDwvbGluZWFyR3JhZGllbnQ+IDxsaW5lYXJHcmFkaWVudCBpZD0icCIgeDE9IjAiIHkxPSIwIiB4Mj0iMCIgeTI9IjEiPiA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiNmZmZmZmYiLz4gPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjZWVmMGZiIi8+IDwvbGluZWFyR3JhZGllbnQ+IDwvZGVmcz4gPHJlY3Qgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHJ4PSIxMTYiIGZpbGw9InVybCgjZykiLz4gPHBhdGggZD0iTTE1MCA4NmgxNThsNjYgNjZ2MjU4YTI4IDI4IDAgMCAxLTI4IDI4SDE1MGEyOCAyOCAwIDAgMS0yOC0yOFYxMTRhMjggMjggMCAwIDEgMjgtMjh6IiBmaWxsPSJ1cmwoI3ApIi8+IDxwYXRoIGQ9Ik0zMDggODZ2NDZhMjAgMjAgMCAwIDAgMjAgMjBoNDZ6IiBmaWxsPSIjYzljZGYzIi8+IDxyZWN0IHg9IjE2MCIgeT0iMTc4IiB3aWR0aD0iOTYiIGhlaWdodD0iMTYiIHJ4PSI4IiBmaWxsPSIjYjliZmRjIi8+PHJlY3QgeD0iMjgyIiB5PSIxNzgiIHdpZHRoPSI1OCIgaGVpZ2h0PSIxNiIgcng9IjgiIGZpbGw9IiMzOTQ2ZDYiLz4gPHJlY3QgeD0iMTYwIiB5PSIyMjIiIHdpZHRoPSIxMjAiIGhlaWdodD0iMTYiIHJ4PSI4IiBmaWxsPSIjYjliZmRjIi8+PHJlY3QgeD0iMzA0IiB5PSIyMjIiIHdpZHRoPSIzNiIgaGVpZ2h0PSIxNiIgcng9IjgiIGZpbGw9IiM5YWEyYzgiLz4gPHJlY3QgeD0iMTYwIiB5PSIyNjYiIHdpZHRoPSI4MCIgaGVpZ2h0PSIxNiIgcng9IjgiIGZpbGw9IiNiOWJmZGMiLz48cmVjdCB4PSIyOTIiIHk9IjI2NiIgd2lkdGg9IjQ4IiBoZWlnaHQ9IjE2IiByeD0iOCIgZmlsbD0iIzlhYTJjOCIvPiA8cmVjdCB4PSIxNjAiIHk9IjMxOCIgd2lkdGg9IjE4MCIgaGVpZ2h0PSI0IiByeD0iMiIgZmlsbD0iI2Q1ZDllZSIvPiA8cmVjdCB4PSIxNjAiIHk9IjM0MCIgd2lkdGg9IjcwIiBoZWlnaHQ9IjIwIiByeD0iMTAiIGZpbGw9IiMxNDFhMmUiLz4gPGNpcmNsZSBjeD0iMzYyIiBjeT0iMzg0IiByPSI3NCIgZmlsbD0iIzEyYTM1ZiIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjE0Ii8+IDxwYXRoIGQ9Ik0zMjcgMzg1bDI0IDI0IDQ3LTUwIiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMjAiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPiA8L3N2Zz4=" alt="" width="44" height="44"></span>
     <div class="titles"><h1>Décodeur de fiche de paie</h1><span class="sub">Vérifie ta paie en 1 minute · règles 2026</span></div>
     <button type="button" class="chip" id="chip-secu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Privé</button>
   </header>
@@ -2490,7 +2518,7 @@ $("week-mode").addEventListener("change", (e) => { STATE.weekMode = e.target.val
 analyse(EXAMPLE, "Exemple fictif chargé : ce ne sont pas tes chiffres. Dépose tes propres fiches pour les analyser.", "example", "Exemple");
 </script>
 
-<script>window.APP_BUILD = "13/11/2026 10:59";
+<script>window.APP_BUILD = "13/11/2026 12:05";
 if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
   var hadController = !!navigator.serviceWorker.controller, reloaded = false;
   navigator.serviceWorker.addEventListener("controllerchange", function () { if (hadController && !reloaded) { reloaded = true; location.reload(); } });

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4654e8"/>
+      <stop offset="1" stop-color="#2b33b8"/>
+    </linearGradient>
+    <linearGradient id="p" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#eef0fb"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#g)"/>
+  <!-- fiche de paie -->
+  <path d="M150 86h158l66 66v258a28 28 0 0 1-28 28H150a28 28 0 0 1-28-28V114a28 28 0 0 1 28-28z" fill="url(#p)"/>
+  <path d="M308 86v46a20 20 0 0 0 20 20h46z" fill="#c9cdf3"/>
+  <!-- lignes du bulletin : libellé + montant -->
+  <rect x="160" y="178" width="96" height="16" rx="8" fill="#b9bfdc"/><rect x="282" y="178" width="58" height="16" rx="8" fill="#3946d6"/>
+  <rect x="160" y="222" width="120" height="16" rx="8" fill="#b9bfdc"/><rect x="304" y="222" width="36" height="16" rx="8" fill="#9aa2c8"/>
+  <rect x="160" y="266" width="80" height="16" rx="8" fill="#b9bfdc"/><rect x="292" y="266" width="48" height="16" rx="8" fill="#9aa2c8"/>
+  <rect x="160" y="318" width="180" height="4" rx="2" fill="#d5d9ee"/>
+  <rect x="160" y="340" width="70" height="20" rx="10" fill="#141a2e"/>
+  <!-- badge vérifié -->
+  <circle cx="362" cy="384" r="74" fill="#12a35f" stroke="#ffffff" stroke-width="14"/>
+  <path d="M327 385l24 24 47-50" fill="none" stroke="#ffffff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

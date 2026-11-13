@@ -1,5 +1,5 @@
 /* Cache hors connexion de l'appli. Ne met en cache que le programme, jamais une fiche de paie. */
-const CACHE = "fichepaie-5486213f3762";
+const CACHE = "fichepaie-459455bafb6e";
 const FILES = ["./", "index.html", "manifest.webmanifest", "vendor/pdf.min.js", "vendor/pdf.worker.min.js",
   "icons/icon-192.png", "icons/icon-512.png", "icons/icon-maskable-512.png", "icons/apple-touch-icon.png"];
 
