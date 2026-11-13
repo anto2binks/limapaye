@@ -16,7 +16,7 @@ Application web (une seule page, tout tourne dans le navigateur) qui analyse les
 
 ## Utilisation
 
-**En ligne (installable sur l'écran d'accueil)** : https://anto2binks.github.io/fichepaie/ (GitHub Pages, branche `claude/pensive-hypatia-yp4smk`, dossier racine). Une fois ouverte, l'appli fonctionne aussi hors connexion.
+**En ligne (installable sur l'écran d'accueil)** : https://anto2binks.github.io/limapaye/ (GitHub Pages, branche `claude/pensive-hypatia-yp4smk`, dossier racine). Une fois ouverte, l'appli fonctionne aussi hors connexion.
 
 **Hors ligne** : `dist/limapaye.html`, un seul fichier à ouvrir dans un navigateur.
 
