@@ -241,6 +241,18 @@ td .t { font-weight: 700; display: block; }
 table.multi { min-width: 760px; }
 table.multi td, table.multi th { white-space: nowrap; }
 table.multi td.n { font-family: var(--font-num); text-align: right; }
+.lcards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.lcard { background: var(--sunken); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.lcard.unknown { background: var(--warn-soft); }
+.lc-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; }
+.lc-title { font-weight: 800; font-size: 16px; }
+.lc-who { font-size: 12px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 3px 10px; }
+.lc-label { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.lc-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.lc-chip { background: var(--surface); border-radius: 10px; padding: 6px 10px; display: flex; flex-direction: column; min-width: 0; }
+.lc-chip small { font-size: 11.5px; color: var(--muted); }
+.lc-chip b { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 15px; }
+.lc-expl { font-size: 14.5px; }
 details.sub > summary { cursor: pointer; font-weight: 700; font-size: 15px; padding: 4px 0; }
 pre.raw { font: 12px/1.5 var(--font-num); background: var(--sunken); padding: 12px; border-radius: 10px; overflow-x: auto; margin: 0; white-space: pre; }
 ol.steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; }
@@ -411,15 +423,10 @@ footer.legal strong { color: var(--fg); }
   </details>
 
   <details class="acc" id="acc-lignes">
-    <summary><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg></span><span class="acc-t"><h3 id="h-lignes">Ta fiche, ligne par ligne</h3><small>Chaque ligne expliquée en français simple.</small></span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></summary>
+    <summary><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg></span><span class="acc-t"><h3 id="h-lignes">Ta fiche, ligne par ligne</h3><small>Chaque ligne de ta fiche expliquée : à quoi elle sert, combien, qui paie.</small></span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></summary>
     <div class="acc-body">
       <p class="muted small" id="lignes-count"></p>
-    <div class="tablewrap">
-      <table>
-        <thead><tr><th>Ligne lue</th><th>Ce que ça veut dire</th><th>Qui paie</th></tr></thead>
-        <tbody id="lines"></tbody>
-      </table>
-    </div>
+      <ul class="lcards" id="lines"></ul>
 
     </div>
   </details>
@@ -442,25 +449,6 @@ footer.legal strong { color: var(--fg); }
     </div>
   </details>
 
-  <details class="acc" id="sec-ai">
-    <summary><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg></span><span class="acc-t"><h3 id="h-ai">Analyse détaillée par Claude</h3><small>Une explication complète et un mail prêt à envoyer.</small></span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></summary>
-    <div class="acc-body">
-
-      <p class="muted small" id="ai-intro">Claude relit toutes les fiches chargées, avec tes corrections et tes paniers, et te fait une analyse complète : ce qui est juste, ce qui cloche, les questions à poser et un mail prêt à envoyer. Le texte envoyé est anonymisé (nom, adresse et n° de Sécu retirés). L'analyse utilise ton compte Claude.</p>
-      <div class="btns">
-        <button type="button" class="primary" id="ai-run">Envoyer à Claude (anonymisé)</button>
-        <button type="button" id="ai-stop" hidden>Arrêter</button>
-      </div>
-      <div class="ai-out" id="ai-out"></div>
-      <div id="ai-ask" hidden>
-        <label for="ai-question"><strong>Une question sur tes fiches ?</strong></label>
-        <textarea id="ai-question" placeholder="Ex. : combien devrait valoir un panier repas dans ma convention collective ?"></textarea>
-        <div class="btns"><button type="button" id="ai-send">Poser la question</button></div>
-      </div>
-      <details><summary class="small muted">Voir le texte envoyé à Claude</summary><pre class="raw" id="ai-preview"></pre></details>
-
-    </div>
-  </details>
 
   <p class="group-title">Plus</p>
   <details class="acc" id="secu">
@@ -470,7 +458,6 @@ footer.legal strong { color: var(--fg); }
       <li class="ok"><span class="stripe"></span><div class="body"><div class="row1"><span class="title">Tes PDF restent sur ton appareil</span></div><div class="detail">La lecture et toutes les vérifications se font dans ton navigateur. La page ne contacte aucun service externe : pas de polices en ligne, pas de bibliothèque chargée ailleurs, pas de statistiques.</div></div></li>
       <li class="ok"><span class="stripe"></span><div class="body"><div class="row1"><span class="title">Rien n'est enregistré</span></div><div class="detail">Tes fiches ne sont stockées nulle part, ni sur un serveur ni dans le navigateur : fermer ou recharger la page les efface. Seuls les montants unitaires des paniers sont gardés sur cet appareil (« Tout effacer » les supprime).</div></div></li>
       <li class="ok"><span class="stripe"></span><div class="body"><div class="row1"><span class="title">Partager l'application ne partage pas tes fiches</span></div><div class="detail">L'application ne contient que le programme. Tes fiches, tes heures et tes résultats n'existent que sur ton écran, le temps que la page est ouverte.</div></div></li>
-      <li class="info"><span class="stripe"></span><div class="body"><div class="row1"><span class="title">Seule exception : l'analyse détaillée par Claude</span></div><div class="detail">Uniquement si tu cliques sur le bouton, et après ton accord. Le texte est anonymisé avant l'envoi (nom, prénom, adresse, n° de Sécu, IBAN, e-mail, téléphone retirés partout). Tu peux lire exactement ce qui part dans « Voir le texte envoyé à Claude ». Il est traité par ton compte Claude, comme une conversation.</div></div></li>
     </ul>
     </div>
   </details>
@@ -1411,18 +1398,46 @@ function renderSummary(v) {
 }
 
 function renderLines(lines) {
-  const rows = [];
+  const cards = [];
+  const WHO = { [SAL]: "Payé par toi", [PAT]: "Payé par l'employeur", [BOTH]: "Toi + employeur", [NONE]: "" };
+  const P = (r) => pct(r, Math.abs(r) < 0.1 ? 3 : 2);
   for (const l of lines) {
     const ns = numbersIn(l);
     if (!ns.length) continue;
     const n = norm(l);
     if (/loi n|garantit un droit|^page \d|reference|n° employeur|securite sociale :|adresse/.test(n) || !/\d,\d/.test(l)) continue;
     const g = GLOSSARY.find(([re]) => re.test(n));
-    if (g) rows.push(`<tr><td class="lbl">${esc(l)}</td><td><span class="t">${g[1]}</span>${g[2]}</td><td class="who">${g[3]}</td></tr>`);
-    else if ((l.match(/\d,\d{2}/g) || []).length >= 2 && /[a-z]{3}/.test(n)) rows.push(`<tr><td class="lbl">${esc(l)}</td><td><span class="t">Ligne non reconnue</span><span class="muted">Si c'est une cotisation ou une retenue, demande à quoi elle correspond.</span></td><td class="who">?</td></tr>`);
+    if (!g && !((l.match(/\d,\d{2}/g) || []).length >= 2 && /[a-z]{3}/.test(n))) continue;
+    // Libellé tel qu'écrit sur la fiche, sans les montants
+    const label = l.split(/\s{3,}/).filter((p) => !isNumSeg(p)).join(" ").trim() || l;
+    // Montants décodés : base, taux, ta part, part employeur
+    const chips = [];
+    const ar = lineArithmetic(ns);
+    const who = g ? g[3] : "";
+    if (ar && ar.pairs.length && !ar.bad.length) {
+      chips.push(["Base de calcul", eur(ar.base)]);
+      ar.pairs.forEach((p, i) => {
+        let k = "Taux " + P(p.r);
+        if (ar.pairs.length === 2) k = (i === 0 ? "Ta part" : "Part employeur") + " (" + P(p.r) + ")";
+        else if (who === PAT) k = "Part employeur (" + P(p.r) + ")";
+        else if (who === SAL) k = "Ta part (" + P(p.r) + ")";
+        chips.push([k, eur(p.m)]);
+      });
+    } else if (ns.length === 3 && near(ns[0] * ns[1], ns[2], Math.max(0.1, Math.abs(ns[2]) * 0.01)) && Math.abs(ns[0]) < 400) {
+      chips.push(["Heures", fh(Math.abs(ns[0]))], ["Taux horaire", eur(ns[1])], ["Montant", eur(ns[2])]);
+    } else if (ns.length === 1) chips.push(["Montant", eur(ns[0])]);
+    else chips.push(["Montants lus", ns.map((x) => x.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 3 })).join(" · ")]);
+    const neg = ns.some((x) => x < 0);
+    const title = g ? g[1] : "Ligne non reconnue";
+    const expl = g ? g[2] : "L'appli ne connaît pas cette ligne. Si c'est une cotisation ou une retenue, demande à ton employeur à quoi elle correspond.";
+    const whoTxt = g ? WHO[g[3]] || "" : "";
+    cards.push(`<li class="lcard${g ? "" : " unknown"}"><div class="lc-head"><span class="lc-title">${esc(title)}</span>${whoTxt ? `<span class="lc-who">${whoTxt}</span>` : ""}</div>` +
+      `<div class="lc-label">Sur ta fiche : « ${esc(label)} »</div>` +
+      `<div class="lc-chips">${chips.map(([k, v]) => `<span class="lc-chip"><small>${esc(k)}</small><b>${v}</b></span>`).join("")}</div>` +
+      `<p class="lc-expl">${expl}${neg ? " Montant négatif : c'est une somme retirée ou rendue (régularisation, réduction)." : ""}</p></li>`);
   }
-  $("lines").innerHTML = rows.join("") || `<tr><td colspan="3" class="muted">Aucune ligne chiffrée lue.</td></tr>`;
-  $("lignes-count").textContent = rows.length ? rows.length + " lignes chiffrées" : "";
+  $("lines").innerHTML = cards.join("") || `<li class="lcard"><p class="lc-expl">Aucune ligne chiffrée lue sur cette fiche.</p></li>`;
+  $("lignes-count").textContent = cards.length ? cards.length + " lignes expliquées, dans l'ordre de ta fiche." : "";
 }
 
 /* ------------------------------------------------------------------ */
@@ -2086,170 +2101,6 @@ function reportText() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Analyse détaillée par Claude                                        */
-/* ------------------------------------------------------------------ */
-/* Retire tout ce qui identifie le salarié avant un envoi à Claude :
-   nom, prénom, adresse, n° de Sécu, IBAN, e-mail, téléphone, date de naissance. */
-function identityTokens(text) {
-  const toks = new Set();
-  const add = (str) => (str || "").split(/[\s,'-]+/).forEach((w) => { if (w.length >= 3 && !/^(monsieur|madame|mme|mlle|nom|prenom|prénom)$/i.test(w)) toks.add(w); });
-  for (const raw of text.split("\n")) {
-    let m;
-    if ((m = raw.match(/\b(?:pr[ée]nom|nom(?: de naissance| d'usage)?|salari[ée]e?)\s*:\s*([A-Za-zÀ-ÿ' -]+?)(?=\s{2,}|$)/i))) add(m[1]);
-    if ((m = raw.match(/^\s*(?:monsieur|madame|mme|mlle|m\.)\s+([A-Za-zÀ-ÿ' -]+)$/i))) add(m[1]);
-  }
-  return [...toks];
-}
-function anonymize(text) {
-  const toks = identityTokens(text);
-  const out = []; let skip = 0;
-  for (const raw of text.split("\n")) {
-    const n = norm(raw);
-    if (skip > 0) { skip--; if (/\d{5}|\brue\b|avenue|chemin|\bbd\b|boulevard|allee|impasse|place|lieu[- ]dit|residence|batiment|^\d/.test(n)) continue; skip = 0; }
-    if (/^\s*(monsieur|madame|mme|mlle|m\.)\s/.test(n)) { skip = 3; continue; }
-    if (/adresse du salari|domicile/.test(n)) continue;
-    let l = raw
-      .replace(/(pr[ée]nom|nom(?: de naissance| d'usage)?)\s*:\s*[^\s].*?(?=\s{3}|$)/gi, "$1 : [masqué]")
-      .replace(/(s[ée]curit[ée] sociale|n°\s*ss|nir)\s*:?\s*[\d\s]{13,}/gi, "$1 : [masqué]")
-      .replace(/\b[12]\s?\d{2}\s?\d{2}\s?(\d{2}|2A|2B)\s?\d{3}\s?\d{3}(\s?\d{2})?\b/gi, "[n° sécu masqué]")
-      .replace(/\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){3,7}(?:\s?[A-Z0-9]{1,3})?\b/g, "[IBAN masqué]")
-      .replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "[e-mail masqué]")
-      .replace(/\b0\d(?:[ .]?\d{2}){4}\b/g, "[téléphone masqué]")
-      .replace(/(n[ée]e? le|date de naissance)\s*:?\s*\d{1,2}\/\d{1,2}\/\d{2,4}/gi, "$1 [masqué]")
-      .replace(/(matricule)\s*:?\s*\S+/gi, "$1 : [masqué]");
-    for (const t of toks) l = l.replace(new RegExp("\\b" + t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "gi"), "[masqué]");
-    out.push(l);
-  }
-  return out.join("\n");
-}
-function buildDataBlock() {
-  const P = getValues().P;
-  const docs = STATE.docs;
-  return docs.map((d) => {
-    const vals = FIELDS.filter((f) => d.values[f.id] != null).map((f) => "- " + f.label + " : " + (f.h ? fh(d.values[f.id]) : String(d.values[f.id]).replace(".", ","))).join("\n");
-    const indem = INDEM.filter((it) => d.counts[it.id]).map((it) => "- " + it.label + " : " + d.counts[it.id] + " × " + (STATE.units[it.id] != null ? eur(STATE.units[it.id]) : "montant non indiqué")).join("\n");
-    const flags = [d.flags.cadre ? "cadre" : "non cadre", d.flags.alsace ? "Alsace-Moselle" : "", d.flags.plafondHS ? "le salarié indique avoir déjà dépassé le plafond de 7 500 € d'heures sup exonérées d'impôt cette année" : ""].filter(Boolean).join(" ; ");
-    const W = computeWeeks(d);
-    const wk = W ? "Heures réellement travaillées notées par le salarié, semaine par semaine (" + (STATE.weekMode === "two" ? "décompte sur 2 semaines" : "décompte hebdomadaire") + ", contrat de " + STATE.contrat + " h par semaine) : " + weeksOf(d).map((x, i) => "S" + (i + 1) + " = " + (x || "?")).join(", ") + " → " + fh(W.worked) + " travaillées, heures sup dues " + fh(W.h25) + " à 25 % et " + fh(W.h50) + " à 50 %.\n" : "Le salarié n'a pas noté ses heures semaine par semaine pour ce mois.\n";
-    return "=== FICHE : " + d.label + (d.example ? " (EXEMPLE FICTIF)" : "") + " ===\n" +
-      "Texte extrait du PDF (anonymisé) :\n" + anonymize(d.text).slice(0, 14000) + "\n\n" +
-      "Chiffres retenus (lus automatiquement puis éventuellement corrigés par le salarié) :\n" + vals + "\n" +
-      "Situation : " + flags + "\n" +
-      (() => { const c = ccnOf(d), RR = rulesOf(d), set = STATE.ccnRules[ccnKey(d)] || {}; return "Convention collective : " + (c ? c.name + (c.idcc ? " (IDCC " + c.idcc + ")" : "") : "non trouvée") + ". Règles saisies par le salarié : " + (Object.keys(set).length ? CCN_FIELDS.filter(([k]) => set[k] != null).map(([k, lab]) => lab.replace(/ \(.*$/, "") + " = " + set[k]).join(" ; ") : "aucune (règles légales par défaut)") + ".\n"; })() +
-      wk + "Jours de congé pris ce mois selon le salarié : " + (d.cpPris || 0) + (STATE.entree ? " ; date d'entrée : " + STATE.entree : "") + ".\n" + (indem ? "Décompte du salarié pour ses indemnités ce mois-ci :\n" + indem + "\n" : "Le salarié n'a pas indiqué son décompte de paniers pour ce mois.\n");
-  }).join("\n\n") + "\n\nParamètres utilisés par l'outil : SMIC horaire " + eur(P.smic) + ", PMSS " + eur(P.pmss) + ".";
-}
-function localFindings() {
-  const R = STATE.results; if (!R) return "";
-  const strip = (h) => h.replace(/<[^>]+>/g, "");
-  const list = (arr) => arr.filter((c) => c.s !== "ok").map((c) => "- [" + STATUS_LABEL[c.s] + "] " + c.t + " : " + strip(c.d)).join("\n");
-  const multi = Array.from(document.querySelectorAll("#checks-multi li:not(.more)")).map((li) => "- " + li.querySelector(".title").textContent + " : " + li.querySelector(".detail").textContent).join("\n");
-  return "Constats de l'outil automatique pour la fiche affichée (" + curDoc().label + ") :\n" + list(R.calc.concat(R.ccn || [], R.sem || [], R.cp || [], R.cotis, R.indem, R.ment)) + (multi ? "\n\nConstats sur plusieurs mois :\n" + multi : "");
-}
-const AI_RULES = `Tu es un expert de la paie en France (règles 2026), au service d'un salarié qui a du mal à lire ses fiches de paie. Tu tutoies, tu écris en français simple, sans jargon (ou en l'expliquant).
-
-Ta mission : analyser les fiches de paie ci-dessous et dire clairement ce qui est juste, ce qui est faux ou manquant, et ce que le salarié doit faire.
-
-Règles :
-- Écris les heures uniquement en centièmes (par exemple « 200,17 h », jamais « 200h10 ») et fais tous les calculs en centièmes (10 min = 0,17 h, 15 min = 0,25 h, 30 min = 0,50 h). Si la fiche les écrit en heures-minutes, convertis-les.
-- Vérifie les calculs toi-même (base × taux = montant, totaux, net avant impôt, net imposable, impôt, net payé, net social).
-- Vérifie les mentions obligatoires (art. R3243-1 du Code du travail, bulletin clarifié), le détail du brut, les heures (h/min ↔ centièmes), les heures supplémentaires (réduction de cotisations salariales sans plafond annuel ; exonération d'impôt plafonnée à 7 500 € par an), les indemnités et paniers (nature et montant obligatoires), les congés payés (dates et indemnité obligatoires s'ils sont pris dans le mois ; compteurs acquis/pris/solde ; acquisition de 2,5 jours ouvrables par mois), le montant net social (les remboursements de frais professionnels n'y entrent pas), les taux et la répartition des cotisations.
-- Tiens compte de la convention collective (nom et IDCC fournis) et de l'emploi indiqués sur la fiche. Les règles de convention saisies par le salarié (minimum, majorations, prime d'ancienneté…) priment sur tes connaissances générales ; signale-les si elles te paraissent incohérentes avec la convention. Si tu cites un montant de barème conventionnel (panier, minimum de salaire…), précise que c'est à confirmer dans le texte en vigueur si tu n'es pas certain du chiffre exact pour 2026. N'invente jamais un chiffre.
-- Si plusieurs mois sont fournis, compare-les (ce qui change d'un mois à l'autre, ce qui manque certains mois, cumuls).
-- Sépare bien ce qui est certain, ce qui est probable et ce qui est à vérifier. Chiffre les sommes en jeu quand c'est possible.
-- Les constats de l'outil automatique sont des pistes, pas des vérités : confirme-les ou corrige-les.
-
-Réponds en Markdown avec exactement ces parties :
-## En bref
-(3 à 5 phrases)
-## Ce qui est juste
-## Ce qui pose problème
-(du plus important au moins important, avec les montants en jeu)
-## Questions à poser à ton employeur
-## Mail prêt à envoyer
-(un mail court et poli, au vouvoiement, sans nom ni signature à remplir autrement que [Prénom Nom])`;
-
-function mdToHtml(md) {
-  const lines = esc(md).split("\n");
-  const out = []; let list = null, inPre = false, pre = [];
-  const inline = (s) => s.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code class=\"src\">$1</code>");
-  const close = () => { if (list) { out.push("</" + list + ">"); list = null; } };
-  for (const l of lines) {
-    if (/^```/.test(l)) { if (inPre) { out.push("<pre>" + pre.join("\n") + "</pre>"); pre = []; inPre = false; } else { close(); inPre = true; } continue; }
-    if (inPre) { pre.push(l); continue; }
-    let m;
-    if ((m = l.match(/^#{1,4}\s+(.*)/))) { close(); out.push("<h3>" + inline(m[1]) + "</h3>"); }
-    else if ((m = l.match(/^\s*[-*]\s+(.*)/))) { if (list !== "ul") { close(); out.push("<ul>"); list = "ul"; } out.push("<li>" + inline(m[1]) + "</li>"); }
-    else if ((m = l.match(/^\s*\d+[.)]\s+(.*)/))) { if (list !== "ol") { close(); out.push("<ol>"); list = "ol"; } out.push("<li>" + inline(m[1]) + "</li>"); }
-    else if (!l.trim()) close();
-    else if (/^&gt;\s?/.test(l)) { close(); out.push("<p class=\"muted\">" + inline(l.replace(/^&gt;\s?/, "")) + "</p>"); }
-    else { close(); out.push("<p>" + inline(l) + "</p>"); }
-  }
-  if (inPre) out.push("<pre>" + pre.join("\n") + "</pre>");
-  close();
-  return out.join("");
-}
-
-const AI = { sample: null, turns: [], ctl: null, busy: false, html: [] };
-const AI_ERR = {
-  not_granted: "Tu n'as pas autorisé la page à utiliser Claude. Les vérifications automatiques ci-dessus restent disponibles.",
-  sampling_disabled: "Claude n'est pas disponible pour ton compte.",
-  rate_limited: "Trop de demandes pour l'instant. Réessaie dans quelques minutes.",
-  session_expired: "Ta session a expiré : reconnecte-toi à Claude puis réessaie.",
-  prompt_too_large: "Trop de fiches d'un coup. Retire quelques mois et réessaie.",
-  refused: "Claude n'a pas pu répondre à cette demande.",
-};
-function aiRender(partial) {
-  $("ai-out").innerHTML = AI.html.join("") + (partial ?? "");
-}
-async function aiCall(turns, tier) {
-  AI.busy = true; AI.ctl = new AbortController();
-  $("ai-run").disabled = true; $("ai-send").disabled = true; $("ai-stop").hidden = false;
-  aiRender('<p class="thinking">Claude lit tes fiches… (cela peut prendre une à deux minutes)</p>');
-  try {
-    const { text, truncated } = await AI.sample(turns, { modelTier: tier, cache: false, signal: AI.ctl.signal, onText: ({ text }) => aiRender("<div>" + mdToHtml(text) + "</div>") });
-    AI.turns.push({ role: "assistant", content: text });
-    AI.html.push("<div>" + mdToHtml(text) + (truncated ? '<p class="muted">Réponse coupée : pose une question plus précise pour la suite.</p>' : "") + "</div>");
-    aiRender(); $("ai-ask").hidden = false;
-  } catch (e) {
-    AI.turns.pop();
-    const keep = e.text ? "<div>" + mdToHtml(e.text) + "</div>" : "";
-    if (e.text && e.code !== "refused") AI.html.push(keep);
-    aiRender(e.code === "cancelled" ? "" : '<p class="status err">' + esc(AI_ERR[e.code] || "La connexion à Claude a échoué. Réessaie.") + "</p>");
-    if (e.code === "not_granted" || e.code === "sampling_disabled") $("ai-run").hidden = true;
-  } finally {
-    AI.busy = false; $("ai-run").disabled = false; $("ai-send").disabled = false; $("ai-stop").hidden = true;
-  }
-}
-function aiPrompt() {
-  return AI_RULES + "\n\n---\nFICHES DE PAIE\n\n" + buildDataBlock() + "\n\n---\n" + localFindings();
-}
-function setupAI() {
-  $("ai-preview").textContent = "";
-  $("sec-ai").querySelector("details").addEventListener("toggle", (e) => { if (e.target.open) $("ai-preview").textContent = aiPrompt(); });
-  $("ai-run").disabled = true;
-  $("ai-intro").insertAdjacentHTML("afterend", '<p class="muted small" id="ai-wait">Connexion à Claude…</p>');
-  (window.claude && window.claude.use ? window.claude.use("sample") : Promise.resolve(null)).then((s) => {
-    $("ai-wait").remove();
-    if (!s) { $("ai-run").hidden = true; $("ai-intro").textContent = "L'analyse détaillée par Claude n'est disponible que lorsque cette page est ouverte depuis claude.ai. Les vérifications automatiques restent disponibles."; return; }
-    AI.sample = s; $("ai-run").disabled = false;
-  }, () => { $("ai-wait").remove(); $("ai-run").hidden = true; });
-  $("ai-run").addEventListener("click", () => {
-    if (!AI.sample || AI.busy) return;
-    AI.turns = [{ role: "user", content: aiPrompt() }]; AI.html = [];
-    aiCall(AI.turns, "complex");
-  });
-  $("ai-send").addEventListener("click", () => {
-    const q = $("ai-question").value.trim(); if (!q || !AI.sample || AI.busy) return;
-    AI.turns.push({ role: "user", content: q });
-    AI.html.push('<p class="chat-q">' + esc(q) + "</p>");
-    $("ai-question").value = "";
-    aiCall(AI.turns, "default");
-  });
-  $("ai-stop").addEventListener("click", () => AI.ctl?.abort());
-}
-
-/* ------------------------------------------------------------------ */
 /* Événements                                                          */
 /* ------------------------------------------------------------------ */
 buildForm();
@@ -2273,9 +2124,8 @@ $("btn-paste").addEventListener("click", () => { $("paste-box").hidden = !$("pas
 $("btn-analyse-paste").addEventListener("click", () => { const t = $("paste-area").value; if (t.trim()) analyse(t, "Texte collé analysé. Vérifie les chiffres lus ci-dessous."); });
 $("btn-example").addEventListener("click", () => { STATE.docs = []; analyse(EXAMPLE, "Exemple fictif chargé : ce ne sont pas tes chiffres. Dépose tes propres fiches pour les analyser.", "example", "Exemple"); });
 $("btn-clear").addEventListener("click", () => {
-  if (AI.busy) AI.ctl?.abort();
-  STATE.docs = []; AI.turns = []; AI.html = []; aiRender(); $("ai-ask").hidden = true;
-  $("paste-area").value = ""; $("ai-question").value = ""; $("ai-preview").textContent = ""; $("report-fallback").value = ""; $("report-fallback").hidden = true;
+  STATE.docs = [];
+  $("paste-area").value = ""; $("report-fallback").value = ""; $("report-fallback").hidden = true;
   STATE.units = {}; store.set("units", {}); STATE.weekMode = "week"; store.set("weekMode", "week"); STATE.contrat = 35; store.set("contrat", 35); STATE.entree = ""; store.set("entree", ""); STATE.ccnRules = {}; store.set("ccnRules", {});
   analyse(EXAMPLE, "Tout est effacé de cette page (fiches, chiffres, analyses, montants des paniers). L'exemple fictif est affiché.", "example", "Exemple");
 });
@@ -2301,11 +2151,10 @@ $("week-add").addEventListener("click", () => { weeksOf(curDoc()).push(""); rend
 $("week-del").addEventListener("click", () => { const w = weeksOf(curDoc()); if (w.length > 1) { w.pop(); renderWeeksForm(); recompute(); } });
 $("week-contrat").addEventListener("input", (e) => { const v = parseHours(e.target.value || "35"); if (!isNaN(v) && v > 0) { STATE.contrat = v; store.set("contrat", v); recompute(); } });
 $("week-mode").addEventListener("change", (e) => { STATE.weekMode = e.target.value; store.set("weekMode", STATE.weekMode); recompute(); });
-setupAI();
 
 analyse(EXAMPLE, "Exemple fictif chargé : ce ne sont pas tes chiffres. Dépose tes propres fiches pour les analyser.", "example", "Exemple");
 </script>
 
-<script>window.APP_BUILD = "13/11/2026 08:43"; var vb = document.getElementById("app-build"); if (vb) vb.textContent = "Version du " + window.APP_BUILD;</script>
+<script>window.APP_BUILD = "13/11/2026 09:32"; var vb = document.getElementById("app-build"); if (vb) vb.textContent = "Version du " + window.APP_BUILD;</script>
 </body>
 </html>
