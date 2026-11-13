@@ -261,6 +261,15 @@ table.multi td.n { font-family: var(--font-num); text-align: right; }
 .lc-chip small { font-size: 11.5px; color: var(--muted); }
 .lc-chip b { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 15px; }
 .lc-expl { font-size: 14.5px; }
+.lc-rate { font-size: 14px; border-radius: 10px; padding: 8px 10px; background: var(--surface); }
+.lc-rate.ok b { color: var(--ok); }
+.lc-rate.warn { background: var(--warn-soft); } .lc-rate.warn b { color: var(--warn); }
+.lc-rate.bad { background: var(--bad-soft); } .lc-rate.bad b { color: var(--bad); }
+.lc-rate.var b { color: var(--muted); }
+.rcard { background: var(--sunken); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.rcard.bad { background: var(--bad-soft); } .rcard.warn { background: var(--warn-soft); }
+.rst { font-size: 12px; font-weight: 700; border-radius: 999px; padding: 3px 10px; background: var(--surface); }
+.rst.ok { color: var(--ok); } .rst.warn { color: var(--warn); } .rst.bad { color: var(--bad); } .rst.var { color: var(--muted); }
 details.sub > summary { cursor: pointer; font-weight: 700; font-size: 15px; padding: 4px 0; }
 pre.raw { font: 12px/1.5 var(--font-num); background: var(--sunken); padding: 12px; border-radius: 10px; overflow-x: auto; margin: 0; white-space: pre; }
 ol.steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; }
@@ -422,6 +431,13 @@ footer.legal strong { color: var(--fg); }
     </div>
   </details>
 
+  <details class="acc" id="acc-rates">
+    <summary><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 5L5 19"/><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/></svg></span><span class="acc-t"><h3 id="h-rates">Les bons taux de cotisation</h3><small>Le taux exact de chaque cotisation, pour toi et l'employeur, comparé à ta fiche.</small></span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></summary>
+    <div class="acc-body">
+      <p class="lead">Taux en vigueur au 1er janvier 2026, adaptés aux règles de ta convention (nombre de salariés, taux accident du travail, répartition de la retraite complémentaire). Les taux propres à ton entreprise (mutuelle, prévoyance, accident du travail, versement mobilité) ne peuvent pas être devinés : renseigne-les dans « Ta convention collective » pour les vérifier.</p>
+      <ul class="lcards" id="rates"></ul>
+    </div>
+  </details>
   <details class="acc" id="acc-ment">
     <summary><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg></span><span class="acc-t"><h3 id="h-mentions">Mentions obligatoires</h3><small>Ce que la loi impose d'écrire sur la fiche.</small></span><div class="counts" id="count-mentions"></div><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></summary>
     <div class="acc-body">
@@ -1294,6 +1310,7 @@ function renderVerdict() {
     const where = (acc.querySelector("summary h3") || {}).textContent || "";
     acc.querySelectorAll("ul.checks li.bad, ul.checks li.warn").forEach((li) => items.push({ s: li.classList.contains("bad") ? "bad" : "warn", t: li.querySelector(".title").textContent, where, acc: acc.id }));
   });
+  document.querySelectorAll("#lines li.ratebad").forEach((li) => items.unshift({ s: "bad", t: "Taux différent : " + li.querySelector(".lc-title").textContent, where: "Ta fiche, ligne par ligne", acc: "acc-lignes" }));
   const nb = items.filter((x) => x.s === "bad").length, nw = items.length - nb;
   const state = nb ? "bad" : nw ? "warn" : "ok";
   const icon = { ok: '<path d="M5 12l5 5L19 7"/>', warn: '<path d="M12 8v5M12 17h.01"/><path d="M10.3 3.9L2 18a2 2 0 0 0 1.7 3h16.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>', bad: '<circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5h.01"/>' }[state];
@@ -1392,12 +1409,17 @@ function renderLines(lines) {
     } else if (ns.length === 1) chips.push(["Montant", eur(ns[0])]);
     else chips.push(["Montants lus", ns.map((x) => x.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 3 })).join(" · ")]);
     const neg = ns.some((x) => x < 0);
+    const RR = curRules(), dd = curDoc();
+    const ref = ar && ar.pairs.length && !ar.bad.length ? findRateRef(l, { alsace: dd && dd.flags && dd.flags.alsace }, RR) : null;
+    const rc = ref ? checkLineRates(ref, ar.pairs, who) : null;
+    const rateHtml = rc ? `<div class="lc-rate ${rc.s}"><b>${{ ok: "✓ Taux correct", warn: "≈ Répartition à vérifier", bad: "✗ Taux différent", var: "Taux propre à l'entreprise" }[rc.s]}</b> ${rc.txt}</div>` : "";
     const title = g ? g[1] : "Ligne non reconnue";
     const expl = g ? g[2] : "L'appli ne connaît pas cette ligne. Si c'est une cotisation ou une retenue, demande à ton employeur à quoi elle correspond.";
     const whoTxt = g ? WHO[g[3]] || "" : "";
-    cards.push(`<li class="lcard${g ? "" : " unknown"}"><div class="lc-head"><span class="lc-title">${esc(title)}</span>${whoTxt ? `<span class="lc-who">${whoTxt}</span>` : ""}</div>` +
+    cards.push(`<li class="lcard${g ? "" : " unknown"}${rc && rc.s === "bad" ? " ratebad" : ""}"><div class="lc-head"><span class="lc-title">${esc(title)}</span>${whoTxt ? `<span class="lc-who">${whoTxt}</span>` : ""}</div>` +
       `<div class="lc-label">Sur ta fiche : « ${esc(label)} »</div>` +
       `<div class="lc-chips">${chips.map(([k, v]) => `<span class="lc-chip"><small>${esc(k)}</small><b>${v}</b></span>`).join("")}</div>` +
+      rateHtml +
       `<p class="lc-expl">${expl}${neg ? " Montant négatif : c'est une somme retirée ou rendue (régularisation, réduction)." : ""}</p></li>`);
   }
   $("lines").innerHTML = cards.join("") || `<li class="lcard"><p class="lc-expl">Aucune ligne chiffrée lue sur cette fiche.</p></li>`;
@@ -1833,7 +1855,7 @@ const CCN_LIST = [
   [1000, "Cabinets d'avocats (personnel salarié)", /cabinets? d.avocats/],
   [2332, "Entreprises d'architecture", /architecture/],
 ];
-const CCN_DEFAULT_RULES = { minH: null, minM: null, r1: 25, r2: 50, band: 8, anc: null, ancAns: null, nuit: null, dim: null };
+const CCN_DEFAULT_RULES = { minH: null, minM: null, r1: 25, r2: 50, band: 8, anc: null, ancAns: null, nuit: null, dim: null, at: null, effectif: null, rcT1: null };
 STATE.ccnRules = store.get("ccnRules", {});
 
 function detectCCN(text) {
@@ -1867,6 +1889,9 @@ const CCN_FIELDS = [
   ["ancAns", "… à partir de combien d'années d'ancienneté", "Ex. 3"],
   ["nuit", "Majoration des heures de nuit (%)", "Facultatif"],
   ["dim", "Majoration du dimanche / jour férié (%)", "Facultatif"],
+  ["at", "Taux accident du travail de ton entreprise (%)", "Sur ta fiche ou la notification CARSAT de l'employeur"],
+  ["effectif", "Nombre de salariés de l'entreprise", "Pour vérifier le FNAL et la formation professionnelle"],
+  ["rcT1", "Retraite complémentaire T1 + CEG : ta part (%)", "4,01 % par défaut ; à changer seulement si un accord prévoit une autre répartition"],
 ];
 function renderCCN() {
   const d = curDoc(); if (!d) return;
@@ -1916,6 +1941,93 @@ function checkCCN(d, v) {
   }
   if (R.nuit || R.dim) out.push({ s: "info", t: "Majorations nuit / dimanche", d: "Ta convention : " + [R.nuit && "nuit +" + R.nuit + " %", R.dim && "dimanche / férié +" + R.dim + " %"].filter(Boolean).join(", ") + ". " + (/nuit|dimanche|ferie/.test(norm(d.text)) ? "Des lignes correspondantes apparaissent sur la fiche : vérifie le nombre d'heures et le taux." : "Aucune ligne de nuit, dimanche ou férié sur la fiche : si tu en as fait, elles doivent apparaître.") });
   return out;
+}
+
+/* ------------------------------------------------------------------ */
+/* Taux de cotisations en vigueur (1er janvier 2026)                   */
+/* Taux légaux nationaux ; les taux propres à l'entreprise (accident   */
+/* du travail, mutuelle, prévoyance, versement mobilité) ne sont pas   */
+/* devinés : ils viennent des règles saisies, sinon « variable ».      */
+/* ------------------------------------------------------------------ */
+const isRC = (n) => /(complementaire|agirc|arrco)/.test(n) && !/sante|mutuelle/.test(n);
+const isT2 = (n) => /tranche 2|tranche b|\bt2\b|\btr ?2\b/.test(n);
+const isT1 = (n) => /tranche 1|tranche a|\bt1\b|\btr ?1\b/.test(n);
+function rateRef(R, v) {
+  const eff = R.effectif;
+  const atTxt = R.at != null ? pct(R.at) : null;
+  return [
+    { k: "mutuelle", label: "Mutuelle (complémentaire santé)", test: (n) => /mutuelle|complementaire sante|frais de sante|soins? sante/.test(n), variable: "Montant fixé par le contrat de ton entreprise. L'employeur doit payer au moins la moitié." },
+    { k: "prevoyance", label: "Prévoyance", test: (n) => /prevoyance|incapacite/.test(n), variable: "Taux fixé par le contrat de prévoyance de ton entreprise ou de ta convention." },
+    { k: "totalite", label: "Sécurité sociale sur la totalité du salaire (regroupée)", test: (n) => /totalite du salaire|sur la totalite/.test(n), sal: [0.40],
+      pat: R.at != null ? [r2(7 + 2.11 + 3.45 + 0.30 + R.at), r2(13 + 2.11 + 3.45 + 0.30 + R.at), r2(7 + 2.11 + 5.25 + 0.30 + R.at), r2(13 + 2.11 + 5.25 + 0.30 + R.at)] : null,
+      note: "Employeur = maladie 7 % (ou 13 %) + retraite 2,11 % + famille 3,45 % (ou 5,25 %) + CSA 0,30 % + accident du travail" + (atTxt ? " " + atTxt : " (taux de ton entreprise)") + "." },
+    { k: "compl_maladie", label: "Complément maladie", test: (n) => /complement.*maladie/.test(n), sal: [], pat: [6.00], note: "Dû seulement au-delà de 2,25 SMIC sur l'année." },
+    { k: "compl_famille", label: "Complément allocations familiales", test: (n) => /complement.*famil/.test(n), sal: [], pat: [1.80], note: "Dû seulement au-delà d'environ 3,3 SMIC." },
+    { k: "rc_t1_ceg", label: "Retraite complémentaire + CEG, tranche 1", test: (n) => isRC(n) && /ceg|equilibre general/.test(n) && !isT2(n), sal: [R.rcT1 != null ? R.rcT1 : 4.01], pat: [R.rcT1 != null ? r2(10.02 - R.rcT1) : 6.01], total: 10.02, note: "Taux total 10,02 % (7,87 % + CEG 2,15 %). Répartition légale 4,01 % / 6,01 %, sauf accord." },
+    { k: "rc_t2_all", label: "Retraite complémentaire + CEG + CET, tranche 2", test: (n) => isRC(n) && isT2(n) && /ceg|cet|equilibre/.test(n), sal: [9.86], pat: [14.78], total: 24.64, note: "Taux total 24,64 % (21,59 % + CEG 2,70 % + CET 0,35 %)." },
+    { k: "rc_t2", label: "Retraite complémentaire, tranche 2", test: (n) => isRC(n) && isT2(n), sal: [8.64], pat: [12.95], total: 21.59 },
+    { k: "rc_t1", label: "Retraite complémentaire, tranche 1", test: (n) => (isRC(n) || /^tranche 1/.test(n)) && !/ceg|equilibre|\bcet\b/.test(n), sal: [3.15], pat: [4.72], total: 7.87, note: "Répartition légale 3,15 % / 4,72 % (60/40), sauf accord." },
+    { k: "ceg_t2", label: "CEG, tranche 2", test: (n) => /\bceg\b|equilibre general/.test(n) && isT2(n), sal: [1.08], pat: [1.62] },
+    { k: "ceg_t1", label: "CEG, tranche 1", test: (n) => /\bceg\b|equilibre general/.test(n), sal: [0.86], pat: [1.29] },
+    { k: "cet", label: "CET (contribution d'équilibre technique)", test: (n) => /\bcet\b|equilibre technique/.test(n), sal: [0.14], pat: [0.21], note: "Seulement si le salaire dépasse le plafond Sécu (4 005 €)." },
+    { k: "apec", label: "APEC (cadres)", test: (n) => /apec/.test(n), sal: [0.024], pat: [0.036] },
+    { k: "at", label: "Accidents du travail – maladies professionnelles", test: (n) => /accident|at\s*\/?\s*mp|at-mp/.test(n), sal: [], pat: R.at != null ? [R.at] : null, variable: R.at != null ? null : "Taux propre à ton entreprise (notifié chaque année par la CARSAT). Indique-le dans les règles de ta convention pour le vérifier." },
+    { k: "csg_nd", label: "CSG / CRDS non déductible", test: (n) => /(csg|crds)/.test(n) && (/non[- ]?deductible/.test(n) || /crds/.test(n)), sal: [2.90, 2.40, 0.50], pat: [], note: "2,40 % de CSG + 0,50 % de CRDS, sur 98,25 % du brut (+ part employeur mutuelle/prévoyance)." },
+    { k: "csg_ded", label: "CSG déductible", test: (n) => /csg/.test(n), sal: [6.80], pat: [], note: "Sur 98,25 % du brut (+ part employeur mutuelle/prévoyance)." },
+    { k: "compl_chomage", label: "Assurance chômage + AGS", test: (n) => /chomage/.test(n) && /\bags\b/.test(n), sal: [], pat: [4.25], note: "Chômage 4,00 % + AGS 0,25 %." },
+    { k: "chomage", label: "Assurance chômage", test: (n) => /chomage/.test(n) && !/suppression|evolution/.test(n), sal: [], pat: [4.00], note: "Plus de cotisation chômage côté salarié depuis 2018." },
+    { k: "ags", label: "AGS (garantie des salaires)", test: (n) => /\bags\b|garantie des salaires/.test(n), sal: [], pat: [0.25] },
+    { k: "maladie", label: "Assurance maladie", test: (n) => /maladie|sante/.test(n) && !/professionnelle|suppression|evolution/.test(n), sal: v && v.alsace ? [1.30] : [0], pat: [7.00, 13.00], note: "Employeur 7 % jusqu'à 2,25 SMIC, 13 % au-delà." + (v && v.alsace ? " Alsace-Moselle : 1,30 % salarié." : "") },
+    { k: "vieil_deplaf", label: "Retraite Sécu déplafonnée", test: (n) => /deplafonn/.test(n), sal: [0.40], pat: [2.11] },
+    { k: "vieil_plaf", label: "Retraite Sécu plafonnée", test: (n) => /plafonn|vieillesse/.test(n) && !/deplafonn|fnal/.test(n), sal: [6.90], pat: [8.55], note: "Sur le salaire jusqu'au plafond Sécu (4 005 € par mois)." },
+    { k: "famille", label: "Allocations familiales", test: (n) => /famille|allocations familiales/.test(n), sal: [], pat: [3.45, 5.25], note: "3,45 % ; 5,25 % au-delà d'environ 3,3 SMIC." },
+    { k: "csa", label: "Contribution solidarité autonomie (CSA)", test: (n) => /\bcsa\b|solidarite autonomie/.test(n), sal: [], pat: [0.30] },
+    { k: "fnal", label: "FNAL (aide au logement)", test: (n) => /fnal/.test(n), sal: [], pat: eff == null ? [0.10, 0.50] : eff < 50 ? [0.10] : [0.50], note: "0,10 % (plafonné) sous 50 salariés, 0,50 % à partir de 50." },
+    { k: "formation", label: "Formation professionnelle", test: (n) => /formation professionnelle/.test(n), sal: [], pat: eff == null ? [0.55, 1.00] : eff < 11 ? [0.55] : [1.00], note: "0,55 % sous 11 salariés, 1 % à partir de 11." },
+    { k: "apprentissage_solde", label: "Taxe d'apprentissage – solde", test: (n) => /apprentissage/.test(n) && /solde/.test(n), sal: [], pat: [0.09] },
+    { k: "apprentissage", label: "Taxe d'apprentissage – part principale", test: (n) => /apprentissage/.test(n), sal: [], pat: [0.59] },
+    { k: "dialogue", label: "Contribution au dialogue social", test: (n) => /dialogue social/.test(n), sal: [], pat: [0.016] },
+    { k: "mobilite", label: "Versement mobilité", test: (n) => /mobilite|versement transport/.test(n), variable: "Taux fixé par la commune ou l'agglomération (entreprises de 11 salariés et plus)." },
+  ];
+}
+function findRateRef(line, v, R) { const n = norm(line); return rateRef(R, v).find((e) => e.test(n)) || null; }
+const fmtRates = (arr) => arr && arr.length ? arr.map((r) => pct(r, Math.abs(r) < 0.1 ? 3 : 2)).join(" ou ") : "—";
+function checkLineRates(ref, pairs, who) {
+  if (!ref) return null;
+  if (ref.variable && !(ref.pat || ref.sal)) return { s: "var", txt: ref.variable };
+  const okIn = (r, arr) => arr && arr.some((x) => Math.abs(x - r) <= 0.006);
+  let sal = null, pat = null;
+  if (pairs.length >= 2) { sal = pairs[0].r; pat = pairs[1].r; }
+  else if (pairs.length === 1) {
+    const r = pairs[0].r;
+    if (ref.sal && !ref.sal.filter((x) => x !== 0).length) pat = r;
+    else if (!ref.pat || !ref.pat.length) sal = r;
+    else if (who === PAT) pat = r; else if (who === SAL) sal = r;
+    else if (okIn(r, ref.sal)) sal = r; else pat = r;
+  } else return null;
+  const exp = "Attendu : " + [ref.sal && ref.sal.length ? "toi " + fmtRates(ref.sal) : "", ref.pat && ref.pat.length ? "employeur " + fmtRates(ref.pat) : (ref.pat === null ? "employeur : taux propre à ton entreprise" : "")].filter(Boolean).join(" · ") + ".";
+  const badS = sal != null && ref.sal && ref.sal.length && !okIn(sal, ref.sal);
+  const badP = pat != null && ref.pat && ref.pat.length && !okIn(pat, ref.pat);
+  if (!badS && !badP) return { s: "ok", txt: "Taux conforme. " + exp + (ref.pat === null && pat != null && ref.k === "totalite" ? " Ici, accident du travail ≈ " + pct(pat - 12.86) + " si maladie 7 % et famille 3,45 %." : "") };
+  if (ref.total && sal != null && pat != null && Math.abs(sal + pat - ref.total) <= 0.02) return { s: "warn", txt: "Taux total correct (" + pct(ref.total) + "), mais répartition différente : toi " + pct(sal) + ", employeur " + pct(pat) + ". " + exp + " Légal seulement si un accord le prévoit (sinon tu paies trop)." };
+  return { s: "bad", txt: "Taux affiché différent : " + [badS ? "toi " + pct(sal, Math.abs(sal) < 0.1 ? 3 : 2) : "", badP ? "employeur " + pct(pat, Math.abs(pat) < 0.1 ? 3 : 2) : ""].filter(Boolean).join(", ") + ". " + exp + " Demande une explication." };
+}
+function renderRateTable() {
+  const d = curDoc(); if (!d) return;
+  const R = rulesOf(d), v = (STATE.results || {}).v || {};
+  const refs = rateRef(R, v);
+  const lines = d.lines || [];
+  const found = {};
+  for (const l of lines) { const ns = numbersIn(l); const ar = lineArithmetic(ns); if (!ar || !ar.pairs.length) continue; const ref = refs.find((e) => e.test(norm(l))); if (ref && !found[ref.k]) found[ref.k] = checkLineRates(ref, ar.pairs, (GLOSSARY.find(([re]) => re.test(norm(l))) || [])[3]); }
+  const st = { ok: "✓ conforme sur ta fiche", warn: "≈ répartition différente", bad: "✗ différent sur ta fiche", var: "propre à l'entreprise" };
+  const isVar = (e) => e.variable && !(e.pat || e.sal);
+  const ordered = refs.filter((e) => found[e.k]).concat(refs.filter((e) => !found[e.k] && !isVar(e)), refs.filter((e) => !found[e.k] && isVar(e)));
+  $("rates").innerHTML = ordered.map((e) => {
+    const f = found[e.k];
+    const vals = e.variable && !(e.pat || e.sal) ? `<span class="lc-chip"><small>Taux</small><b>variable</b></span>`
+      : `<span class="lc-chip"><small>Toi</small><b>${e.sal && e.sal.length && e.sal.some((x) => x) ? fmtRates(e.sal.filter((x) => x || e.sal.length === 1)) : "0 %"}</b></span><span class="lc-chip"><small>Employeur</small><b>${e.pat ? (e.pat.length ? fmtRates(e.pat) : "0 %") : "propre à l'entreprise"}</b></span>`;
+    return `<li class="rcard${f ? " " + f.s : ""}"><div class="lc-head"><span class="lc-title">${esc(e.label)}</span>${f ? `<span class="rst ${f.s}">${st[f.s]}</span>` : ""}</div><div class="lc-chips">${vals}</div>${e.note || e.variable ? `<p class="lc-expl">${e.note || e.variable}</p>` : ""}</li>`;
+  }).join("");
 }
 
 /* ------------------------------------------------------------------ */
@@ -2014,6 +2126,8 @@ function recompute() {
   renderChecks("checks-indem", "count-indem", indem);
   renderMulti(P);
   STATE.results = { calc, cotis, ment, indem, sem, cp, ccn: ccnChecks, v };
+  renderLines(STATE.lines);
+  renderRateTable();
   renderVerdict();
 }
 
@@ -2119,7 +2233,7 @@ $("week-mode").addEventListener("change", (e) => { STATE.weekMode = e.target.val
 analyse(EXAMPLE, "Exemple fictif chargé : ce ne sont pas tes chiffres. Dépose tes propres fiches pour les analyser.", "example", "Exemple");
 </script>
 
-<script>window.APP_BUILD = "13/11/2026 09:32";
+<script>window.APP_BUILD = "13/11/2026 10:07";
 if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
   var hadController = !!navigator.serviceWorker.controller, reloaded = false;
   navigator.serviceWorker.addEventListener("controllerchange", function () { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
