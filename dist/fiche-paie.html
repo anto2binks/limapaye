@@ -191,7 +191,7 @@ details.acc[open] > summary { border-bottom: 1px solid var(--line); border-radiu
 .field.check { flex-direction: row; align-items: center; gap: 10px; }
 .field.check input { width: 22px; min-height: 22px; height: 22px; accent-color: var(--accent); }
 .hint.conv { font-family: var(--font-num); color: var(--accent); min-height: 1em; }
-#ccn-select, #week-mode, #week-entree { font: 15px var(--font-body); }
+#ccn-select, #week-mode, #week-entree, #ct-select, #ct-entree, #ct-sortie, #ct-annee { font: 15px var(--font-body); }
 .weeks { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
 .weeks input { font: 18px var(--font-num); padding: 11px 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--bg); color: var(--fg); width: 100%; min-height: 48px; }
 .weeks label { font-size: 14px; font-weight: 700; }
@@ -318,7 +318,7 @@ footer.legal strong { color: var(--fg); }
   <section class="verdict" id="verdict" aria-live="polite"></section>
 
   <section class="card" aria-labelledby="h-resume">
-    <div class="btns" style="justify-content:space-between;align-items:baseline"><h2 id="h-resume">Ta paie en bref</h2><span class="muted small" id="periode-lue"></span></div>
+    <div class="btns" style="justify-content:space-between;align-items:baseline"><h2 id="h-resume">Ta paie en bref</h2><span class="muted small"><span id="periode-lue"></span> · <b id="contract-chip"></b></span></div>
     <div class="flow" id="tiles"></div>
       <div class="bar" id="bar" aria-hidden="true"></div>
       <div class="legend" id="legend"></div>
@@ -326,6 +326,19 @@ footer.legal strong { color: var(--fg); }
       </section>
 
   <p class="group-title">Compléter pour tout vérifier</p>
+  <details class="acc" id="acc-contract">
+    <summary><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/></svg></span><span class="acc-t"><h3 id="h-contract">Ton contrat</h3><small>CDI, CDD, intérim, vacation ou apprentissage : les calculs s'adaptent.</small></span><div class="counts" id="count-contract"></div><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></summary>
+    <div class="acc-body">
+      <p id="ct-detect"></p>
+      <label class="field" for="ct-select"><span class="small"><b>Type de contrat</b></span><select id="ct-select"></select></label>
+      <div class="grid-form">
+        <div class="field"><label for="ct-entree">Date d'embauche (début du contrat)</label><input id="ct-entree" type="date"><span class="hint" id="ct-entree-hint"></span><span class="hint">Réduit la base le mois d'arrivée, sert à l'ancienneté et aux congés.</span></div>
+        <div class="field"><label for="ct-sortie">Date de fin du contrat</label><input id="ct-sortie" type="date"><span class="hint" id="ct-sortie-hint"></span><span class="hint">Pour le dernier mois (fin de CDD, départ) : réduit la base et déclenche la vérification des indemnités de fin.</span></div>
+      </div>
+      <div class="grid-form" id="ct-extra"></div>
+      <ul class="checks" id="checks-contract"></ul>
+    </div>
+  </details>
   <details class="acc" id="acc-chiffres">
     <summary><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg></span><span class="acc-t"><h3 id="h-chiffres">Les chiffres lus sur ta fiche</h3><small>Vérifie-les : encadré en couleur = lu automatiquement. Corrige si besoin.</small></span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></summary>
     <div class="acc-body">
@@ -831,6 +844,12 @@ function extract(text) {
     const ns = hL ? numbersIn(hL).filter((x) => x > 0 && x < 300) : [];
     if (ns.length) f.heures = ns[0];
   }
+  if (f.hBase == null) {
+    // Intérim : « Heures normales  120,00  12,50  1 500,00 »
+    const hn = findLine(lines, (n) => /heures normales|heures travaillees/.test(n));
+    const ns = hn ? numbersIn(hn) : [];
+    if (ns.length >= 3) { const [a, b, c] = ns.slice(-3); if (near(a * b, c, Math.max(0.1, c * 0.01))) { f.hBase = a; f.taux = f.taux ?? b; if (f.base == null) f.base = c; } }
+  }
   if (f.heures == null && f.hBase != null) f._heuresFromBase = true;
   if (f.heures == null && f.hBase != null) f.heures = r2(f.hBase + (f.hs25 || 0) + (f.hs50 || 0) + (f.hc10 || 0) + (f.hc25 || 0));
   if (f.taux == null) {
@@ -873,6 +892,10 @@ function extract(text) {
     const x = f[k];
     if (x != null && Number.isInteger(x) && x > f.brut * 1.6 && x / 100 < f.brut * 1.6) { f[k] = r2(x / 100); f._fixed.push(k); }
   }
+  const dE = nt.match(/(?:date d.(?:entree|embauche)|\bentree\s*:|entree le|embauche le|debut (?:de |du )?(?:contrat|mission))\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/);
+  f._entree = dE ? parseFrDate(dE[1]) : null;
+  const dS = nt.match(/(?:date de (?:sortie|fin(?: de contrat| du contrat| de mission)?)|\bsortie\s*:|sorti(?:e)? le|fin de contrat le|terme du contrat)\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/);
+  f._sortie = dS ? parseFrDate(dS[1]) : null;
   const periode = (text.match(/p[ée]riode[^\n]*?du\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+au\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/i) || text.match(/du\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+au\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/i));
   f._periode = periode ? "Période du " + periode[1] + " au " + periode[2] : "";
   f._cadre = /\bcadre\b/.test(norm(text)) && !/non[- ]cadre/.test(norm(text));
@@ -887,6 +910,11 @@ const SAL = "Toi", PAT = "Employeur", BOTH = "Toi + employeur", NONE = "—";
 const GLOSSARY = [
   [/precarite|indemnite de fin de contrat|fin de (contrat|cdd)/, "Indemnité de fin de contrat (prime de précarité)", "Versée à la fin d'un CDD : 10 % de tout le brut gagné pendant le contrat (sauf exceptions : CDD saisonnier, étudiant en vacances, embauche en CDI à la suite…). C'est de l'argent pour toi.", NONE],
   [/indemnite compensatrice de conges|\biccp\b|compensatrice de cp/, "Indemnité compensatrice de congés payés", "Paie les congés que tu n'as pas pu prendre, à la fin du contrat : au moins 10 % du brut gagné pendant le contrat. C'est de l'argent pour toi.", NONE],
+  [/fin de mission|\bifm\b/, "Indemnité de fin de mission (intérim)", "Versée à la fin de chaque mission d'intérim : au moins 10 % de tout le brut gagné pendant la mission (sauf exceptions : CDI chez l'entreprise utilisatrice à la suite, rupture à ton initiative, faute grave…). C'est de l'argent pour toi.", NONE],
+  [/ircantec/, "IRCANTEC (retraite complémentaire du secteur public)", "Retraite complémentaire des agents non titulaires du secteur public (contractuels, vacataires). Tranche A : 2,80 % pour toi, 4,20 % pour l'employeur.", BOTH],
+  [/vacation|vacataire/, "Vacations", "Paiement à la vacation : nombre de vacations (séances, heures ou gardes) × tarif d'une vacation. Il n'y a pas de salaire mensuel fixe.", NONE],
+  [/heures normales|heures travaillees/, "Heures normales", "Heures payées au taux normal, sans majoration. En intérim ou à la vacation, chaque heure travaillée est payée ; les heures au-delà de 35 h par semaine doivent être en heures sup.", NONE],
+  [/traitement (de base|indiciaire|brut)|indice majore/, "Traitement (secteur public)", "Salaire de base dans le secteur public : un indice × la valeur du point d'indice.", NONE],
   [/cpf.?cdd|contribution cpf/, "Contribution CPF-CDD", "Contribution de 1 % du brut, payée par l'employeur pour chaque salarié en CDD (sauf exceptions : contrats aidés, apprentissage, CDD transformé en CDI…). Elle finance le compte personnel de formation. Rien n'est retiré de ton salaire.", PAT],
   [/fnal|aide au logement/, "FNAL (aide au logement)", "Finance les aides au logement (APL). 0,10 % du salaire (jusqu'au plafond Sécu) sous 50 salariés, 0,50 % à partir de 50. Payé uniquement par l'employeur.", PAT],
   [/\bcsa\b|solidarite autonomie/, "Contribution solidarité autonomie (CSA)", "Finance l'aide aux personnes âgées et handicapées. 0,30 % du salaire, payé par l'employeur.", PAT],
@@ -1150,7 +1178,7 @@ function checkCalculs(v, P) {
   let tx = has("taux") ? v.taux : (hB != null && hB > 0 && has("base") ? v.base / hB : null);
   let estimated = false;
   if (tx == null && has("brut") && has("heures") && v.heures > 0) { tx = v.brut / (v.heures + HI.majEq); estimated = true; }
-  if (tx != null) {
+  if (tx != null && !(curDoc() && contractOf(curDoc()).type === "apprenti")) {
     const lbl = estimated ? "Ton taux horaire estimé (brut ÷ heures, majorations comprises, primes éventuelles incluses) est d'environ " : "Ton taux horaire (";
     out.push(tx + 0.005 >= P.smic
       ? { s: "ok", t: "Au-dessus du SMIC", d: lbl + eur(tx) + (estimated ? "" : ")") + ", au-dessus du SMIC 2026 (" + eur(P.smic) + ")." + (estimated ? " Vérifie aussi le minimum de ta convention collective pour ton niveau." : "") }
@@ -1158,26 +1186,33 @@ function checkCalculs(v, P) {
   }
 
   if (has("heures") || hB != null) {
+    const dC = curDoc(), mensC = dC ? isMens(dC) : true, tC = dC ? contractOf(dC).type : "cdi";
     const h = has("heures") ? v.heures : hB + hsTot;
-    const prB = curDoc() ? prorata(curDoc(), STATE.contrat || 35) : null;
-    const absC = (curDoc() && curDoc().f._absHours) || 0;
-    const base = hB != null ? r2(hB - (prB ? absC : 0)) : (h - hsTot > 151.67 ? 151.67 : r2(h - hsTot));
+    const listHS = [HI.h25 && fh(HI.h25) + " à 25 %", HI.h50 && fh(HI.h50) + " à 50 %", HI.c10 && fh(HI.c10) + " complémentaires à 10 %", HI.c25 && fh(HI.c25) + " complémentaires à 25 %"].filter(Boolean).join(", ");
     let d, st = "info";
-    const pr = curDoc() ? prorata(curDoc(), STATE.contrat || 35) : null;
-    if (pr && base >= pr.min - 0.1 && base <= pr.max + 0.1) d = "Base de " + fh(base) + " : salaire proratisé du mois d'embauche (arrivée le " + pr.entry.toLocaleDateString("fr-FR") + ", " + fh(pr.lostH) + " retirées pour " + pr.days.join(", ") + ").";
-    else if (pr && base < pr.min - 0.1) { d = "Base de " + fh(base) + " : plus faible que la proratisation du mois d'embauche (" + fh(pr.min) + " minimum)."; st = "warn"; }
-    else if (pr && base > pr.max + 0.1 && hB == null) {
-      st = "warn";
-      d = "<b>Le total d'heures écrit sur la fiche ne correspond pas à son propre détail.</b> Base proratisée " + fh(pr.b1) + " (151,67 h − " + fh(pr.lostH) + " pour " + pr.days.join(", ") + ") + " + fh(hsTot) + " d'heures majorées = <b>" + fh(r2(pr.b1 + hsTot)) + "</b>, mais la fiche écrit <b>" + fh(h) + "</b> : " + fh(r2(h - pr.b1 - hsTot)) + " de plus, sans explication. Demande à quoi elles correspondent (jour férié, heures non majorées, erreur de saisie…) et sur quel nombre d'heures ton brut a été calculé.";
+    if (!mensC) {
+      // Intérim, vacation : payé à l'heure, pas de base mensualisée de 151,67 h
+      d = "Payé à l'heure (" + CONTRACTS[tC].label + ") : pas de salaire mensualisé, chaque heure travaillée est payée. Heures payées : " + fh(h) + (hsTot ? ", dont " + listHS : "") + ".";
+      if (!hsTot) d += " Les heures au-delà de 35 h dans une même semaine doivent être payées en heures sup : note tes semaines pour le vérifier.";
+    } else {
+      const pr = dC ? prorata(dC, STATE.contrat || 35) : null;
+      const absC = (dC && dC.f._absHours) || 0;
+      const base = hB != null ? r2(hB - (pr ? absC : 0)) : (h - hsTot > 151.67 ? 151.67 : r2(h - hsTot));
+      if (pr && base >= pr.min - 0.1 && base <= pr.max + 0.1) d = "Base de " + fh(base) + " : salaire proratisé du mois incomplet (" + prorataTitle(pr) + ", " + fh(pr.lostH) + " retirées pour les jours " + prorataWhy(pr) + ").";
+      else if (pr && base < pr.min - 0.1) { d = "Base de " + fh(base) + " : plus faible que la proratisation du mois incomplet (" + fh(pr.min) + " minimum)."; st = "warn"; }
+      else if (pr && base > pr.max + 0.1 && hB == null) {
+        st = "warn";
+        d = "<b>Le total d'heures écrit sur la fiche ne correspond pas à son propre détail.</b> Base proratisée " + fh(pr.b1) + " (151,67 h − " + fh(pr.lostH) + " pour les jours " + prorataWhy(pr) + ") + " + fh(hsTot) + " d'heures majorées = <b>" + fh(r2(pr.b1 + hsTot)) + "</b>, mais la fiche écrit <b>" + fh(h) + "</b> : " + fh(r2(h - pr.b1 - hsTot)) + " de plus, sans explication. Demande à quoi elles correspondent (jour férié, heures non majorées, erreur de saisie…) et sur quel nombre d'heures ton brut a été calculé.";
+      }
+      else if (near(base, 151.67, 0.02)) d = "Base de 151,67 h = 35 h par semaine × 52 semaines ÷ 12 mois : temps plein, payé pareil chaque mois.";
+      else if (base < 151.6) d = "Base de " + fh(base) + " : temps partiel (≈ " + (base * 12 / 52).toFixed(1).replace(".", ",") + " h par semaine), ou mois incomplet si tu es arrivé ou parti ce mois-ci (indique les dates dans « Ton contrat »). Les heures au-delà de ton contrat sont des heures complémentaires : +10 % jusqu'à un dixième de ton contrat, +25 % au-delà.";
+      else d = "Base de " + fh(base) + ", plus qu'un temps plein (151,67 h) : les heures au-delà de 35 h par semaine doivent être payées en heures sup majorées.";
+      if (hsTot) {
+        d += " Heures majorées sur la fiche : " + listHS + ". Total payé : " + fh(h) + ".";
+        const rest = r2(h - base - hsTot);
+        if (rest > 0.2 && !(pr && base > pr.max + 0.1)) { st = "warn"; d += " Il reste <b>" + fh(rest) + "</b> payées qui ne sont ni dans la base ni majorées : demande à quoi elles correspondent (heures d'équivalence, temps de pause payé, régularisation…)."; }
+      } else if (h > 151.7) { st = "warn"; d += " " + fh(h) + " payées mais aucune heure majorée trouvée : les heures au-delà de 151,67 h devraient apparaître en heures sup (+25 % puis +50 %)."; }
     }
-    else if (near(base, 151.67, 0.02)) d = "Base de 151,67 h = 35 h par semaine × 52 semaines ÷ 12 mois : temps plein, payé pareil chaque mois.";
-    else if (base < 151.6) d = "Base de " + fh(base) + " : temps partiel (≈ " + (base * 12 / 52).toFixed(1).replace(".", ",") + " h par semaine). Les heures au-delà de ton contrat sont des heures complémentaires : +10 % jusqu'à un dixième de ton contrat, +25 % au-delà.";
-    else d = "Base de " + fh(base) + ", plus qu'un temps plein (151,67 h) : les heures au-delà de 35 h par semaine doivent être payées en heures sup majorées.";
-    if (hsTot) {
-      d += " Heures majorées sur la fiche : " + [HI.h25 && fh(HI.h25) + " à 25 %", HI.h50 && fh(HI.h50) + " à 50 %", HI.c10 && fh(HI.c10) + " complémentaires à 10 %", HI.c25 && fh(HI.c25) + " complémentaires à 25 %"].filter(Boolean).join(", ") + ". Total payé : " + fh(h) + ".";
-      const rest = r2(h - base - hsTot);
-      if (rest > 0.2 && !(pr && base > pr.max + 0.1)) { st = "warn"; d += " Il reste <b>" + fh(rest) + "</b> payées qui ne sont ni dans la base ni majorées : demande à quoi elles correspondent (heures d'équivalence, temps de pause payé, régularisation…)."; }
-    } else if (h > 151.7) { st = "warn"; d += " " + fh(h) + " payées mais aucune heure majorée trouvée : les heures au-delà de 151,67 h devraient apparaître en heures sup (+25 % puis +50 %)."; }
     out.push({ s: st, t: "Durée du travail", d });
   }
 
@@ -1461,7 +1496,8 @@ function renderLines(lines) {
     const neg = ns.some((x) => x < 0);
     const RR = curRules(), dd = curDoc();
     const ref = ar && ar.pairs.length && !ar.bad.length ? findRateRef(l, { alsace: dd && dd.flags && dd.flags.alsace }, RR) : null;
-    const rc = ref ? checkLineRates(ref, ar.pairs, who) : null;
+    let rc = ref ? checkLineRates(ref, ar.pairs, who) : null;
+    if (rc && (rc.s === "bad" || rc.s === "warn") && dd && specialRates(dd)) rc = { s: "var", txt: "Taux différent du cas général, normal pour " + (contractOf(dd).type === "apprenti" ? "un apprenti (exonérations)" : "le secteur public") + ". " + rc.txt };
     const rateHtml = rc ? `<div class="lc-rate ${rc.s}"><b>${{ ok: "✓ Taux correct", warn: "≈ Répartition à vérifier", bad: "✗ Taux différent", var: "Taux propre à l'entreprise" }[rc.s]}</b> ${rc.txt}</div>` : "";
     const title = g ? g[1] : "Ligne non reconnue";
     const expl = g ? g[2] : "L'appli ne connaît pas cette ligne. Si c'est une cotisation ou une retenue, demande à ton employeur à quoi elle correspond.";
@@ -1545,6 +1581,7 @@ function selectDoc(i) {
   $("raw").textContent = d.text;
   renderLines(d.lines);
   renderIndemForm();
+  renderContract();
   renderWeeksForm();
   renderCCN();
   $("cp-pris").value = d.cpPris != null ? String(d.cpPris).replace(".", ",") : "";
@@ -1603,6 +1640,154 @@ function checkIndem(d, v) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Type de contrat : CDI, CDD, intérim, vacation, apprentissage        */
+/* Mensualisé (base fixe de 151,67 h) ou payé à l'heure.               */
+/* ------------------------------------------------------------------ */
+const CONTRACTS = {
+  cdi: { label: "CDI", long: "Contrat à durée indéterminée (CDI)", mens: true },
+  cdd: { label: "CDD", long: "Contrat à durée déterminée (CDD)", mens: true },
+  interim: { label: "Intérim", long: "Intérim (travail temporaire)", mens: false },
+  vacation: { label: "Vacation", long: "Vacation (payé à la vacation ou à l'heure)", mens: false },
+  apprenti: { label: "Apprentissage", long: "Contrat d'apprentissage", mens: true },
+};
+STATE.apprenti = store.get("apprenti", {});
+function detectContract(text) {
+  const n = norm(text);
+  const pub = /ircantec|cnracl|indice (brut|majore)|fonction publique|traitement indiciaire|agent contractuel/.test(n);
+  const rules = [
+    ["interim", /travail temporaire|\binterim(aire)?\b|entreprise utilisatrice|indemnite de fin de mission|fin de mission|\bifm\b|agence d.emploi/],
+    ["apprenti", /contrat d.apprentissage|\bapprenti(e|s|es)?\b/],
+    ["vacation", /\bvacataire|\bvacations?\b/],
+    ["cdd", /\bcdd\b|duree determinee|cpf.?cdd|precarite|indemnite de fin de contrat|terme du contrat/],
+    ["cdi", /\bcdi\b|duree indeterminee/],
+  ];
+  for (const [type, re] of rules) { const m = n.match(re); if (m) return { type, how: "« " + m[0] + " » trouvé sur la fiche", pub }; }
+  return { type: "cdi", how: "aucun signe d'un autre contrat", pub, byDefault: true };
+}
+function contractOf(d) {
+  if (!d) return { type: "cdi", how: "", pub: false };
+  if (!d._contract) d._contract = detectContract(d.text);
+  if (d.contractChoice && d.contractChoice !== d._contract.type) return Object.assign({}, d._contract, { type: d.contractChoice, how: "choisi par toi", byDefault: false, chosen: true });
+  return d._contract;
+}
+const isMens = (d) => CONTRACTS[contractOf(d).type].mens;
+const specialRates = (d) => { const c = contractOf(d); return c.type === "apprenti" || c.pub; };
+const toIso = (x) => x ? x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0") : "";
+function parseFrDate(s) { const m = String(s || "").match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/); if (!m) return null; let y = +m[3]; if (y < 100) y += 2000; const x = new Date(y, m[2] - 1, +m[1]); return isNaN(x) ? null : x; }
+function isoToDate(v) { if (!v) return null; const e = new Date(v + "T00:00:00"); return isNaN(e) ? null : e; }
+/* Barème légal du salaire minimum des apprentis (% du SMIC selon l'âge et l'année) */
+const APPRENTI_GRID = [[18, [27, 39, 55]], [21, [43, 51, 67]], [26, [53, 61, 78]], [999, [100, 100, 100]]];
+function apprentiPct(age, annee) { if (!age || !annee) return null; const row = APPRENTI_GRID.find(([max]) => age < max); return row[1][Math.min(3, Math.max(1, annee)) - 1]; }
+
+function renderContract() {
+  const d = curDoc(); if (!d) return;
+  const c = contractOf(d), CT = CONTRACTS[c.type];
+  $("ct-select").innerHTML = Object.entries(CONTRACTS).map(([k, x]) => `<option value="${k}"${c.type === k ? " selected" : ""}>${x.long}</option>`).join("");
+  $("ct-detect").innerHTML = c.chosen ? "Contrat choisi par toi : <b>" + CT.long + "</b>."
+    : c.byDefault ? "Aucun signe d'un CDD, d'intérim, de vacation ou d'apprentissage sur la fiche : <b>CDI</b> par défaut. Si ce n'est pas ton cas, change-le ci-dessous."
+    : "Contrat reconnu : <b>" + CT.long + "</b> (" + esc(c.how) + ").";
+  $("ct-entree").value = STATE.entree || (d.f._entree ? toIso(d.f._entree) : "");
+  $("ct-sortie").value = d.exitDate || (d.f._sortie ? toIso(d.f._sortie) : "");
+  $("ct-entree-hint").textContent = !STATE.entree && d.f._entree ? "Lue sur la fiche." : "";
+  $("ct-sortie-hint").textContent = !d.exitDate && d.f._sortie ? "Lue sur la fiche." : "";
+  const ct = d.ct || (d.ct = {});
+  const A = STATE.apprenti;
+  let extra = "";
+  if (c.type === "cdd" || c.type === "interim") {
+    extra += `<div class="field"><label for="ct-brut">Brut total gagné pendant ${c.type === "cdd" ? "le contrat" : "la mission"} (€)</label><input id="ct-brut" inputmode="decimal" autocomplete="off" value="${ct.brutTotal != null ? String(ct.brutTotal).replace(".", ",") : ""}" placeholder="facultatif"><span class="hint">Hors indemnités de fin. Utile si ${c.type === "cdd" ? "le contrat" : "la mission"} a duré plus d'un mois ; sinon l'appli prend le brut de cette fiche.</span></div>`;
+  }
+  if (c.type === "cdd") extra += `<div class="field check"><input type="checkbox" id="ct-exception"${ct.exception ? " checked" : ""}><label for="ct-exception">Pas de prime de précarité dans mon cas (CDD saisonnier ou d'usage, étudiant pendant les vacances, CDI proposé à la suite…)</label></div>`;
+  if (c.type === "apprenti") {
+    extra += `<div class="field"><label for="ct-age">Ton âge</label><input id="ct-age" inputmode="numeric" autocomplete="off" value="${A.age || ""}"></div>`;
+    extra += `<div class="field"><label for="ct-annee">Année d'apprentissage</label><select id="ct-annee"><option value="">—</option>${[1, 2, 3].map((k) => `<option value="${k}"${+A.annee === k ? " selected" : ""}>${k}${k === 1 ? "re" : "e"} année</option>`).join("")}</select></div>`;
+  }
+  $("ct-extra").innerHTML = extra;
+  if ($("ct-brut")) $("ct-brut").addEventListener("input", (e) => { const v = toNum(e.target.value || ""); curDoc().ct.brutTotal = e.target.value.trim() && !isNaN(v) ? v : null; recompute(); });
+  if ($("ct-exception")) $("ct-exception").addEventListener("change", (e) => { curDoc().ct.exception = e.target.checked; recompute(); });
+  if ($("ct-age")) $("ct-age").addEventListener("input", (e) => { STATE.apprenti.age = parseInt(e.target.value, 10) || null; store.set("apprenti", STATE.apprenti); recompute(); });
+  if ($("ct-annee")) $("ct-annee").addEventListener("change", (e) => { STATE.apprenti.annee = parseInt(e.target.value, 10) || null; store.set("apprenti", STATE.apprenti); recompute(); });
+  $("contract-chip").textContent = CT.label + (c.pub ? " · secteur public" : "");
+}
+
+function checkContract(d, v) {
+  const c = contractOf(d), t = c.type, CT = CONTRACTS[t], out = [];
+  const n = norm(d.text), P = parsePeriod(d), x = exitDate(d), e = entryDate(d);
+  out.push({ s: "info", t: CT.long, d: (c.chosen ? "Choisi par toi. " : c.byDefault ? "Aucun signe d'un autre contrat sur la fiche : CDI par défaut. " : "Reconnu sur la fiche (" + esc(c.how) + "). ") +
+    (CT.mens ? "Salaire mensualisé : une base fixe chaque mois (151,67 h pour un temps plein), réduite seulement le mois d'arrivée ou de départ." : "Payé à l'heure : chaque heure travaillée est payée, il n'y a pas de base fixe de 151,67 h.") });
+  if (c.pub) out.push({ s: "info", t: "Employeur du secteur public", d: "Ta fiche relève du secteur public (IRCANTEC, traitement…). Les cotisations y sont différentes du privé : les écarts de taux sont donnés à titre indicatif seulement." });
+
+  const lineOf = (re) => { const l = d.lines.find((l) => re.test(norm(l)) && numbersIn(l).length); return l ? { line: l, val: Math.abs(lastNum(l)) } : null; };
+  const prec = lineOf(/precarite|indemnite de fin de contrat|fin de (contrat|cdd)/);
+  const ifm = lineOf(/fin de mission|\bifm\b/);
+  const iccp = lineOf(/compensatrice de (conges|cp)|\biccp\b/);
+  const endThisMonth = !!(x && P && x >= P.from && x <= P.to);
+  const startedThisMonth = !!(e && P && e >= P.from && e <= P.to);
+  const fin = t === "cdd" ? prec : ifm;
+  const brutFiche = v.brut != null ? r2(v.brut - (prec ? prec.val : 0) - (ifm ? ifm.val : 0) - (iccp ? iccp.val : 0)) : null;
+  const ref = d.ct && d.ct.brutTotal != null ? { val: d.ct.brutTotal, how: "brut " + (t === "cdd" ? "du contrat" : "de la mission") + " que tu as indiqué (" + eur(d.ct.brutTotal) + ")" }
+    : (startedThisMonth || t === "interim") && brutFiche ? { val: brutFiche, how: "brut de cette fiche hors indemnités de fin (" + eur(brutFiche) + ")" } : null;
+
+  if (t === "cdd" || t === "interim") {
+    const nomFin = t === "cdd" ? "Prime de précarité (indemnité de fin de contrat)" : "Indemnité de fin de mission (IFM)";
+    const ends = t === "cdd" ? endThisMonth || !!prec : endThisMonth || !!ifm;
+    if (t === "cdd" && !/cpf.?cdd|contribution cpf/.test(n)) out.push({ s: "info", t: "Contribution CPF-CDD absente", d: "L'employeur doit en principe payer 1 % du brut pour les salariés en CDD, sauf exceptions (contrat aidé, contrat de professionnalisation, étudiant pendant ses études, CDD suivi d'un CDI). Ça ne change rien à ton salaire." });
+    if (!ends) out.push({ s: "info", t: nomFin + " : à la fin " + (t === "cdd" ? "du contrat" : "de la mission"), d: "Au moins 10 % de tout le brut gagné, plus une indemnité de congés payés d'au moins 10 % (indemnité de fin comprise). Elles apparaissent sur la fiche du mois où " + (t === "cdd" ? "le contrat se termine" : "la mission se termine") + ". Indique la date de fin dans « Ton contrat » le moment venu." });
+    else if (t === "cdd" && d.ct && d.ct.exception) out.push({ s: "info", t: "Pas de prime de précarité (exception indiquée)", d: "Tu as indiqué un cas où la prime n'est pas due. L'indemnité de congés payés, elle, reste due pour les congés non pris." });
+    else if (!fin) out.push({ s: "bad", t: nomFin + " absente", d: "Ton " + (t === "cdd" ? "contrat se termine" : "ta mission se termine") + " sur cette fiche, mais aucune ligne d'indemnité de fin n'apparaît. Elle vaut au moins <b>10 % de tout le brut gagné</b>" + (ref ? " (≈ " + eur(r2(ref.val * 0.1)) + ", d'après le " + ref.how + ")" : "") + ", sauf exceptions" + (t === "cdd" ? " (CDD saisonnier ou d'usage, étudiant pendant les vacances, CDI à la suite, faute grave…)." : " (CDI chez l'entreprise utilisatrice à la suite, rupture à ton initiative, faute grave…).") });
+    else {
+      const ar = lineArithmetic(numbersIn(fin.line));
+      const shownRate = ar && ar.pairs.length ? ar.pairs[0].r : null;
+      if (shownRate != null && shownRate + 0.001 < 10) out.push({ s: "bad", t: nomFin + " : taux de " + pct(shownRate), d: "Le taux minimum est de 10 %." });
+      else if (ref) {
+        const exp = r2(ref.val * 0.1);
+        out.push(fin.val + Math.max(0.5, exp * 0.005) >= exp
+          ? { s: "ok", t: nomFin + " : " + eur(fin.val), d: "Au moins 10 % du " + ref.how + " = " + eur(exp) + " ✓" }
+          : { s: d.ct && d.ct.brutTotal != null ? "bad" : "warn", t: nomFin + " trop faible ?", d: "La fiche verse " + eur(fin.val) + ", alors que 10 % du " + ref.how + " font <b>" + eur(exp) + "</b>." + (d.ct && d.ct.brutTotal != null ? "" : " Si " + (t === "cdd" ? "le contrat" : "la mission") + " a duré plus d'un mois, indique le brut total dans « Ton contrat » pour un calcul exact.") });
+      } else out.push({ s: "info", t: nomFin + " : " + eur(fin.val), d: "Elle doit valoir au moins 10 % de tout le brut gagné pendant " + (t === "cdd" ? "le contrat" : "la mission") + ". Indique ce brut total dans « Ton contrat » pour vérifier le montant." });
+    }
+    if (ends) {
+      if (!iccp) out.push({ s: "warn", t: "Indemnité compensatrice de congés payés absente", d: "À la fin " + (t === "cdd" ? "du contrat" : "de la mission") + ", les congés non pris sont payés : au moins <b>10 % du brut, indemnité de fin comprise</b>" + (ref ? " (≈ " + eur(r2((ref.val + (fin ? fin.val : 0)) * 0.1)) + ")" : "") + ". Seule exception : tu as pris tous tes congés pendant le contrat." });
+      else if (ref) {
+        const exp = r2((ref.val + (fin ? fin.val : 0)) * 0.1);
+        out.push(iccp.val + Math.max(0.5, exp * 0.005) >= exp
+          ? { s: "ok", t: "Indemnité de congés payés : " + eur(iccp.val), d: "Au moins 10 % de (brut + indemnité de fin) = " + eur(exp) + " ✓" }
+          : { s: "warn", t: "Indemnité de congés payés plus faible que 10 %", d: "La fiche verse " + eur(iccp.val) + ", alors que 10 % de (brut + indemnité de fin) font <b>" + eur(exp) + "</b>. Normal seulement si tu as déjà pris des congés pendant le contrat." });
+      } else out.push({ s: "info", t: "Indemnité de congés payés : " + eur(iccp.val), d: "Elle doit valoir au moins 10 % du brut du contrat, indemnité de fin comprise." });
+    }
+    if (t === "interim") out.push({ s: "info", t: "Ton salaire d'intérimaire", d: "Ton taux horaire doit être au moins celui d'un salarié de l'entreprise utilisatrice au même poste, avec la même qualification. Les primes de l'entreprise utilisatrice (13e mois, paniers…) te sont aussi dues." });
+  }
+
+  if (t === "vacation") {
+    const vac = d.lines.filter((l) => /vacation/.test(norm(l)));
+    let okN = 0;
+    for (const l of vac) {
+      const ns = numbersIn(l); if (ns.length < 3) continue;
+      const [a, b, m] = [ns[ns.length - 3], ns[ns.length - 2], ns[ns.length - 1]];
+      if (near(a * b, m, Math.max(0.06, Math.abs(m) * 0.005))) okN++;
+      else out.push({ s: "bad", t: "Calcul de vacations faux", d: a.toLocaleString("fr-FR") + " × " + eur(b) + " = " + eur(r2(a * b)) + ", mais la ligne affiche " + eur(m) + ".", src: l });
+    }
+    if (okN) out.push({ s: "ok", t: "Vacations bien calculées", d: okN + " ligne(s) : nombre de vacations × tarif = montant ✓. Compare le nombre de vacations avec ton planning." });
+    out.push({ s: "info", t: "Payé à la vacation", d: "Pas de base mensuelle de 151,67 h : tu es payé pour chaque vacation (séance, heure ou garde) faite. Si tes vacations sont payées à l'heure, note tes heures semaine par semaine pour les comparer. Les règles exactes dépendent de ton secteur (public, santé, enseignement, sport…)." });
+  }
+
+  if (t === "apprenti") {
+    const A = STATE.apprenti, pctMin = apprentiPct(A.age, A.annee);
+    if (!pctMin) out.push({ s: "info", t: "Indique ton âge et ton année d'apprentissage", d: "Le salaire minimum d'un apprenti est un pourcentage du SMIC qui dépend de l'âge et de l'année (de 27 % à 100 %)." });
+    else {
+      const P0 = getValues().P, R = rulesOf(d);
+      const refH = A.age >= 21 && R.minH ? Math.max(P0.smic, R.minH) : P0.smic;
+      const minH = r2(refH * pctMin / 100), minM = r2(minH * 151.67);
+      const T = v.taux || (v.base && v.hBase ? v.base / v.hBase : null);
+      const txt = "Minimum à " + A.age + " ans en " + A.annee + (A.annee === 1 ? "re" : "e") + " année : <b>" + pctMin + " % du " + (refH > P0.smic ? "minimum conventionnel" : "SMIC") + "</b>, soit " + eur(minH) + " de l'heure (" + eur(minM) + " par mois à temps plein).";
+      if (T == null) out.push({ s: "info", t: "Salaire minimum d'apprenti", d: txt + " Indique ton taux horaire dans « Les chiffres lus » pour vérifier." });
+      else out.push(T + 0.005 >= minH ? { s: "ok", t: "Salaire d'apprenti au-dessus du minimum", d: txt + " Ton taux : " + eur(T) + " ✓" } : { s: "bad", t: "Salaire d'apprenti sous le minimum", d: txt + " Ton taux : " + eur(T) + ", il manque ≈ " + eur(r2((minH - T) * (v.hBase || 151.67))) + " par mois." });
+    }
+    out.push({ s: "info", t: "Cotisations d'apprenti", d: "Les apprentis bénéficient d'exonérations de cotisations et de CSG/CRDS (en partie seulement depuis 2025, selon la date du contrat), et leur salaire est exonéré d'impôt jusqu'au montant du SMIC annuel. Les écarts de taux sont donc donnés à titre indicatif." });
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
 /* Heures déclarées semaine par semaine                                */
 /* ------------------------------------------------------------------ */
 STATE.weekMode = store.get("weekMode", "week");
@@ -1632,40 +1817,64 @@ function frenchHolidays(y) {
   return new Set(list.map((x) => x.toDateString()));
 }
 const dm = (x) => String(x.getDate()).padStart(2, "0") + "/" + String(x.getMonth() + 1).padStart(2, "0");
-function entryDate() {
-  if (!STATE.entree) { const el = document.getElementById("week-entree") || document.getElementById("cp-entree"); const v = el && el.value; if (v) STATE.entree = v; }
-  if (!STATE.entree) return null; const e = new Date(STATE.entree + "T00:00:00"); return isNaN(e) ? null : e; }
+function entryDate(d) {
+  d = d || curDoc();
+  if (!STATE.entree && d === curDoc()) { for (const id of ["ct-entree", "week-entree", "cp-entree"]) { const el = document.getElementById(id); if (el && el.value && !(d && d.f._entree && el.value === toIso(d.f._entree))) { STATE.entree = el.value; break; } } }
+  return isoToDate(STATE.entree) || (d && d.f._entree) || null;
+}
+function exitDate(d) {
+  d = d || curDoc();
+  if (d && !d.exitDate) { const el = document.getElementById("ct-sortie"); if (el && el.value && d === curDoc() && !(d.f._sortie && el.value === toIso(d.f._sortie))) d.exitDate = el.value; }
+  return (d && (isoToDate(d.exitDate) || d.f._sortie)) || null;
+}
+/* Mois de paie : période de la fiche, jours réellement couverts (embauche, fin de contrat), semaines civiles */
 function weekCalendar(d) {
   const P = parsePeriod(d); if (!P) return null;
-  const e = entryDate();
-  const entry = e && e > P.from && e <= P.to ? e : null;
-  const from = entry || P.from;
+  // Période dans un seul mois civil mais qui ne le couvre pas en entier (ex. du 03/07 au 31/07) : arrivée ou départ en cours de mois.
+  // Période à cheval sur deux mois (ex. du 16/09 au 15/10) : c'est le cycle de paie de l'entreprise, considéré comme complet.
+  const sameMonth = P.from.getMonth() === P.to.getMonth() && P.from.getFullYear() === P.to.getFullYear();
+  const monthEnd = new Date(P.to.getFullYear(), P.to.getMonth() + 1, 0);
+  const partial = sameMonth && !(P.from.getDate() === 1 && P.to.getDate() === monthEnd.getDate());
+  const B = partial ? { from: new Date(P.from.getFullYear(), P.from.getMonth(), 1), to: monthEnd } : { from: P.from, to: P.to };
+  let from = P.from, to = P.to;
+  const e = entryDate(d), x = exitDate(d);
+  if (e && e > from && e <= to) from = e;
+  if (x && x >= from && x < to) to = x;
+  const entry = from > B.from ? from : null, exit = to < B.to ? to : null;
   const mon = new Date(from); mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
   const weeks = [];
-  for (const w = new Date(mon); w <= P.to; w.setDate(w.getDate() + 7)) {
+  for (const w = new Date(mon); w <= to; w.setDate(w.getDate() + 7)) {
     const sun = new Date(w); sun.setDate(sun.getDate() + 6);
-    weeks.push({ mon: new Date(w), sun, inFrom: w < from ? new Date(from) : new Date(w), inTo: sun > P.to ? new Date(P.to) : sun,
-      cutStart: w < from, byEntry: !!entry && w < entry && sun >= entry, cutEnd: sun > P.to });
+    weeks.push({ mon: new Date(w), sun, inFrom: w < from ? new Date(from) : new Date(w), inTo: sun > to ? new Date(to) : sun,
+      cutStart: w < from, byEntry: !!entry && w < entry && sun >= entry, cutEnd: sun > to, byExit: !!exit && sun > exit && w <= exit });
   }
-  return { P, entry, weeks };
+  return { P, B, from, to, entry, exit, weeks };
 }
-/* Base mensualisée proratisée en cas d'embauche en cours de mois (méthode des heures réelles) */
+/* Base mensualisée proratisée si le mois est incomplet (embauche, fin de contrat) : méthode des heures réelles et des jours ouvrés */
 function prorata(d, C) {
-  const cal = weekCalendar(d); if (!cal || !cal.entry) return null;
-  const hol = frenchHolidays(cal.P.from.getFullYear());
-  const days = [];
-  for (const x = new Date(cal.P.from); x < cal.entry; x.setDate(x.getDate() + 1)) {
-    const wd = x.getDay(); if (wd >= 1 && wd <= 5 && !hol.has(x.toDateString())) days.push(dm(x));
-  }
+  if (!isMens(d)) return null;
+  const cal = weekCalendar(d); if (!cal || (!cal.entry && !cal.exit)) return null;
+  const hol = new Set([...frenchHolidays(cal.B.from.getFullYear()), ...frenchHolidays(cal.B.to.getFullYear())]);
+  const before = [], after = [];
   let all = 0, worked = 0;
-  for (const x = new Date(cal.P.from); x <= cal.P.to; x.setDate(x.getDate() + 1)) {
-    const wd = x.getDay(); if (wd >= 1 && wd <= 5 && !hol.has(x.toDateString())) { all++; if (x >= cal.entry) worked++; }
+  for (const x = new Date(cal.B.from); x <= cal.B.to; x.setDate(x.getDate() + 1)) {
+    const wd = x.getDay(); if (wd < 1 || wd > 5 || hol.has(x.toDateString())) continue;
+    all++;
+    if (x < cal.from) before.push(dm(x)); else if (x > cal.to) after.push(dm(x)); else worked++;
   }
   const full = C >= 35 ? 151.67 : r2(C * 52 / 12);
+  const days = before.concat(after);
   const lostH = r2(days.length * C / 5);
   const b1 = r2(full - lostH), b2 = r2(full * worked / Math.max(1, all));
-  return { entry: cal.entry, days, lostH, all, worked, b1, b2, min: Math.min(b1, b2), max: Math.max(b1, b2) };
+  return { entry: cal.entry, exit: cal.exit, before, after, days, lostH, all, worked, b1, b2, min: Math.min(b1, b2), max: Math.max(b1, b2) };
 }
+function prorataWhy(pr) {
+  const parts = [];
+  if (pr.before.length) parts.push("avant ton arrivée (" + pr.before.join(", ") + ")");
+  if (pr.after.length) parts.push("après ta fin de contrat (" + pr.after.join(", ") + ")");
+  return parts.join(" et ") || "non travaillés";
+}
+function prorataTitle(pr) { return [pr.entry && "arrivée le " + pr.entry.toLocaleDateString("fr-FR"), pr.exit && "fin de contrat le " + pr.exit.toLocaleDateString("fr-FR")].filter(Boolean).join(", "); }
 
 function weeksOf(d) {
   const cal = weekCalendar(d);
@@ -1697,10 +1906,13 @@ function computeWeeks(d) {
   ["worked", "h25", "h50", "c10", "c25"].forEach((k) => res[k] = r2(res[k]));
   res.hs = r2(res.h25 + res.h50);
   res.hc = r2(res.c10 + res.c25);
-  res.baseFull = C >= 35 ? 151.67 : r2(C * 52 / 12);
-  res.prorata = prorata(d, C);
-  res.baseM = res.prorata ? r2(res.baseFull - res.prorata.lostH) : res.baseFull;
   res.normal = r2(res.worked - res.hs - res.hc);
+  res.mens = isMens(d);
+  if (res.mens) {
+    res.baseFull = C >= 35 ? 151.67 : r2(C * 52 / 12);
+    res.prorata = prorata(d, C);
+    res.baseM = res.prorata ? r2(res.baseFull - res.prorata.lostH) : res.baseFull;
+  } else { res.baseFull = null; res.prorata = null; res.baseM = res.normal; } // payé à l'heure : chaque heure est payée
   res.expectedPaid = r2(res.baseM + res.hc + res.hs);
   return res;
 }
@@ -1708,7 +1920,7 @@ function renderWeeksForm() {
   const d = curDoc(); const w = weeksOf(d);
   const cal = weekCalendar(d);
   const lab = (i) => { const k = cal && cal.weeks[i]; if (!k) return "Semaine " + (i + 1); return "Du " + dm(k.mon) + " au " + dm(k.sun); };
-  const sub = (i) => { const k = cal && cal.weeks[i]; if (!k || !(k.cutStart || k.cutEnd)) return ""; return `<span class="hint">${k.byEntry ? "Embauche le " + dm(k.inFrom) + " : " : ""}heures du ${dm(k.inFrom)} au ${dm(k.inTo)}${k.cutEnd ? " (la semaine finit le mois suivant)" : (k.cutStart && !k.byEntry ? " (la semaine a commencé le mois d'avant)" : "")}</span>`; };
+  const sub = (i) => { const k = cal && cal.weeks[i]; if (!k || !(k.cutStart || k.cutEnd)) return ""; return `<span class="hint">${k.byEntry ? "Embauche le " + dm(k.inFrom) + " : " : ""}heures du ${dm(k.inFrom)} au ${dm(k.inTo)}${k.cutEnd ? (k.byExit ? " (fin de contrat le " + dm(k.inTo) + ")" : " (la semaine finit le mois suivant)") : (k.cutStart && !k.byEntry ? " (la semaine a commencé le mois d'avant)" : "")}</span>`; };
   $("weeks").innerHTML = w.map((val, i) => `<div class="field week"><label for="w-${i}">${lab(i)}</label>${sub(i)}<input id="w-${i}" inputmode="text" autocomplete="off" placeholder="47,50 ou 47h30" value="${esc(val)}"><span class="hint conv" id="wc-${i}"></span></div>`).join("");
   w.forEach((_, i) => $("w-" + i).addEventListener("input", (e) => { weeksOf(curDoc())[i] = e.target.value; recompute(); }));
   $("week-mode").value = STATE.weekMode;
@@ -1722,10 +1934,10 @@ function checkWeeks(d, v) {
   const out = [];
   weeksOf(d).forEach((x, i) => { const el = $("wc-" + i); if (el) { const h = parseHours(x); el.textContent = h != null ? "= " + fhBoth(h) : ""; } });
   {
-    const el = $("week-entree-info"), P = parsePeriod(d), e = entryDate();
-    if (el) el.textContent = !e ? "" : !P ? "Période de la fiche non lue : date non utilisée" : (e > P.from && e <= P.to) ? "✓ prise en compte : base " + fh(W ? W.baseM : (prorata(d, STATE.contrat || 35) || {}).b1) : (e <= P.from ? "✓ embauché avant ce mois : base complète" : "Date après la fin de cette fiche");
+    const el = $("week-entree-info"), P = parsePeriod(d), e = entryDate(d), prI = prorata(d, STATE.contrat || 35);
+    if (el) el.textContent = !e ? "" : !P ? "Période de la fiche non lue : date non utilisée" : !isMens(d) ? "✓ notée (payé à l'heure : pas de base à réduire)" : prI ? "✓ prise en compte : base " + fh(prI.b1) : (e <= P.from ? "✓ embauché avant ce mois : base complète" : "Date après la fin de cette fiche");
   }
-  $("weeks-sum").textContent = W ? "Heures travaillées : " + fh(W.worked) + " · Heures à payer : " + fh(W.expectedPaid) + " (base " + (W.prorata ? "proratisée " : "") + fh(W.baseM) + (W.hc ? " + " + fh(W.hc) + " compl." : "") + " + " + fh(W.hs) + " sup : " + fh(W.h25) + " à " + rulesOf(d).r1 + " %, " + fh(W.h50) + " à " + rulesOf(d).r2 + " %)" : "";
+  $("weeks-sum").textContent = W ? "Heures travaillées : " + fh(W.worked) + " · Heures à payer : " + fh(W.expectedPaid) + " (" + (W.mens ? "base " + (W.prorata ? "proratisée " : "") : "heures normales ") + fh(W.baseM) + (W.hc ? " + " + fh(W.hc) + " compl." : "") + " + " + fh(W.hs) + " sup : " + fh(W.h25) + " à " + rulesOf(d).r1 + " %, " + fh(W.h50) + " à " + rulesOf(d).r2 + " %)" : "";
   if (!W) { out.push({ s: "info", t: "Note tes heures de chaque semaine", d: "Par exemple 50 ; 42 ; 38,75 ; 47,50 (tu peux aussi les taper en heures-minutes, la conversion s'affiche sous la case). L'outil calcule les heures sup que tu aurais dû être payé et les compare avec la fiche." }); return out; }
   const tag = (x) => [x.c1 && fh(x.c1) + " compl. à 10 %", x.c2 && fh(x.c2) + " compl. à 25 %", x.a && fh(x.a) + " sup à " + rulesOf(d).r1 + " %", x.b && fh(x.b) + " sup à " + rulesOf(d).r2 + " %"].filter(Boolean).join(" + ");
   const calN = weekCalendar(d);
@@ -1733,8 +1945,13 @@ function checkWeeks(d, v) {
   out.push({ s: "info", t: "Ce que tu as noté", d: W.detail.map((x) => x.label + " : " + fh(x.tot) + "" + (tag(x) ? " → " + tag(x) : "")).join(" · ") + "." });
   {
     const hsTxt = W.hs ? fh(W.hs) + " d'heures sup (" + fh(W.h25) + " à " + rulesOf(d).r1 + " % et " + fh(W.h50) + " à " + rulesOf(d).r2 + " %)" : "aucune heure sup";
-    out.push({ s: "info", t: "Ce qui doit être payé : " + fh(W.expectedPaid), d:
-      "<b>1. Le salaire de base : " + fh(W.baseM) + "</b>" + (W.prorata ? " (151,67 h − " + fh(W.prorata.lostH) + " pour " + W.prorata.days.join(", ") + ", jours avant ton embauche)" : " (35 h × 52 semaines ÷ 12)") + ". Il paie toutes tes heures jusqu'à " + fh(W.C) + " par semaine, quel que soit leur nombre exact dans le mois." + (W.prorata ? " Les heures faites le jour de l'embauche et les semaines incomplètes sont dedans." : "") + "<br>" +
+    if (!W.mens) out.push({ s: "info", t: "Ce qui doit être payé : " + fh(W.expectedPaid), d:
+      "Tu es payé à l'heure (" + CONTRACTS[contractOf(d).type].label + ") : <b>toutes tes heures doivent être payées</b>, il n'y a pas de salaire de base fixe.<br>" +
+      "<b>1. Heures normales : " + fh(W.normal) + "</b> (jusqu'à " + fh(W.C) + " par semaine), au taux normal.<br>" +
+      "<b>2. Heures sup : " + (W.hs ? fh(W.hs) : "0,00 h") + "</b>, comptées semaine par semaine au-delà de " + fh(W.C) + " : " + hsTxt + ".<br>" +
+      "<b>Total à payer : " + fh(W.normal) + " + " + fh(W.hs + W.hc) + " = " + fh(W.expectedPaid) + "</b>, c'est-à-dire toutes tes heures travaillées. C'est ce chiffre qu'on compare avec la fiche." });
+    else out.push({ s: "info", t: "Ce qui doit être payé : " + fh(W.expectedPaid), d:
+      "<b>1. Le salaire de base : " + fh(W.baseM) + "</b>" + (W.prorata ? " (" + fh(W.baseFull) + " − " + fh(W.prorata.lostH) + " pour les jours " + prorataWhy(W.prorata) + ")" : " (35 h × 52 semaines ÷ 12)") + ". Il paie toutes tes heures jusqu'à " + fh(W.C) + " par semaine, quel que soit leur nombre exact dans le mois." + (W.prorata ? " Les semaines incomplètes du début ou de la fin du contrat sont dedans." : "") + "<br>" +
       "<b>2. Les heures sup : " + (W.hs ? fh(W.hs) : "0,00 h") + "</b>, comptées semaine par semaine au-delà de " + fh(W.C) + " : " + hsTxt + ".<br>" +
       "<b>Total à payer : " + fh(W.baseM) + " + " + fh(W.hs + W.hc) + " = " + fh(W.expectedPaid) + "</b>. C'est ce chiffre qu'on compare avec la fiche. Tes " + fh(W.worked) + " travaillées ne se comparent pas directement au total de la fiche : seules les heures sup s'ajoutent au salaire de base." });
   }
@@ -1766,28 +1983,28 @@ function checkWeeks(d, v) {
     out.push({ s: diff > 0 ? "bad" : "info", t: "Mauvaise répartition " + RW.r1 + " % / " + RW.r2 + " %", d: "Le total d'heures sup est juste, mais " + (diff > 0 ? fh(diff) + " devraient être majorées à " + RW.r2 + " % au lieu de " + RW.r1 + " %" + (T ? " : manque ≈ <b>" + eur(r2(diff * T * (RW.r2 - RW.r1) / 100)) + " brut</b>." : ".") : "la fiche met plus d'heures à 50 % que ton décompte (à ton avantage).") + " Au-delà de 43 h dans une semaine, c'est +50 % (sauf accord prévoyant autre chose, jamais moins de +10 %)." });
   }
   const absH = curDoc() && curDoc().f._absHours || 0;
-  if (absH && W.prorata && Math.abs(absH - W.prorata.lostH) <= 0.5) out.push({ s: "ok", t: "Retenue d'entrée de la fiche : " + fh(absH) + " ✓", d: "La fiche retire " + fh(absH) + " pour les jours avant ton arrivée (" + W.prorata.days.join(", ") + "), comme le calcul de l'appli : 151,67 h − " + fh(absH) + " = " + fh(W.baseM) + ". Ces heures ne sont pas retirées une deuxième fois." });
+  if (absH && W.prorata && Math.abs(absH - W.prorata.lostH) <= 0.5) out.push({ s: "ok", t: "Retenue de la fiche pour le mois incomplet : " + fh(absH) + " ✓", d: "La fiche retire " + fh(absH) + " pour les jours " + prorataWhy(W.prorata) + ", comme le calcul de l'appli : " + fh(W.baseFull) + " − " + fh(absH) + " = " + fh(W.baseM) + ". Ces heures ne sont pas retirées une deuxième fois." });
   else if (absH) { W.expectedPaid = r2(W.expectedPaid - absH); out.push({ s: "info", t: "Absence prise en compte : " + fh(absH) + "", d: "La fiche retient " + fh(absH) + " d'absence : elles sont déduites des heures attendues. Vérifie que ces heures correspondent bien à une absence réelle." }); }
   if (v.heures != null) {
     const dh = r2(v.heures - W.expectedPaid);
-    if (W.C >= 35 && v.hBase != null && v.hBase < 151.6 && !W.prorata) out.push({ s: "info", t: "Ta fiche indique un temps partiel", d: "Base de " + fh(v.hBase) + ". Indique la durée de ton contrat par semaine dans « Contrat (h/semaine) » pour un calcul juste des heures complémentaires." });
+    if (W.mens && W.C >= 35 && v.hBase != null && v.hBase < 151.6 && !W.prorata) out.push({ s: "info", t: "Ta fiche indique un temps partiel", d: "Base de " + fh(v.hBase) + ". Indique la durée de ton contrat par semaine dans « Contrat (h/semaine) » pour un calcul juste des heures complémentaires." });
     if (dh < -0.1) out.push({ s: "bad", t: "Heures payées inférieures à tes heures", d: "La fiche paie " + fh(v.heures) + ", ton décompte donne " + fh(W.expectedPaid) + " (" + fh(W.baseM) + "" + (W.hc ? " + " + fh(W.hc) + " compl." : "") + " + " + fh(W.hs) + " sup). Il manque <b>" + fh(-dh) + "</b>" + (T ? ", soit ≈ " + eur(r2(-dh * T)) + " brut au minimum." : ".") });
     else if (dh > 0.1) out.push({ s: "info", t: "La fiche paie " + fh(dh) + " de plus que ton décompte", d: "Fiche : " + fh(v.heures) + " ; ton décompte : " + fh(W.expectedPaid) + ". Ça peut venir d'un jour férié, d'heures d'équivalence, de temps de pause payé ou d'une régularisation : demande ce que c'est." });
     else out.push({ s: "ok", t: "Total d'heures payées juste", d: fh(v.heures) + " payées pour " + fh(W.expectedPaid) + " dues." });
   }
-  if (!W.prorata && W.C >= 35 && v.heures != null) {
+  if (W.mens && !W.prorata && W.C >= 35 && v.heures != null) {
     const hsF = (v.hs25 || 0) + (v.hs50 || 0) + (v.hc10 || 0) + (v.hc25 || 0);
     const baseF = v.hBase != null ? v.hBase : r2(v.heures - hsF);
-    if (baseF < 151.67 - 0.5) out.push({ s: "warn", t: "Embauché ou absent ce mois-ci ? Indique ta date d'embauche", d: "La fiche paie une base de " + fh(baseF) + ", moins que les 151,67 h d'un mois complet. Si tu as été embauché ce mois-ci, remplis <b>« Date d'embauche »</b> juste au-dessus : l'appli retirera les jours avant ton arrivée (par exemple 2 jours = 14,00 h) et refera tous les calculs. Sinon, il doit y avoir une absence, qui doit apparaître sur la fiche." });
+    if (baseF < 151.67 - 0.5) out.push({ s: "warn", t: "Arrivée, départ ou absence ce mois-ci ?", d: "La fiche paie une base de " + fh(baseF) + ", moins que les 151,67 h d'un mois complet. Si tu as été embauché ou si ton contrat s'est terminé ce mois-ci, indique la <b>date d'embauche</b> ou la <b>date de fin de contrat</b> (section « Ton contrat ») : l'appli réduira la base des jours non couverts (par exemple 2 jours = 14,00 h) et refera tous les calculs. Si tu es payé à l'heure (intérim, vacation), choisis ce type de contrat. Sinon, il doit y avoir une absence, qui doit apparaître sur la fiche." });
   }
-  if (W.prorata) out.push({ s: "info", t: "Embauche le " + W.prorata.entry.toLocaleDateString("fr-FR") + " : base réduite à " + fh(W.baseM), d: "Le mois d'embauche, la base n'est pas de " + fh(W.baseFull) + " : on retire les jours ouvrés du mois avant ton arrivée (" + (W.prorata.days.join(", ") || "aucun") + "), soit " + W.prorata.days.length + " jour(s) × " + fh(W.C / 5) + " = " + fh(W.prorata.lostH) + ". Base attendue : <b>" + fh(W.baseM) + "</b> (méthode des heures réelles, la plus courante). Avec la méthode des jours ouvrés (" + W.prorata.worked + " jours travaillés sur " + W.prorata.all + "), on trouve " + fh(W.prorata.b2) + ". Les deux méthodes sont admises ; l'employeur doit appliquer la même à chaque fois. Jours fériés exclus." });
+  if (W.prorata) out.push({ s: "info", t: "Mois incomplet (" + prorataTitle(W.prorata) + ") : base réduite à " + fh(W.baseM), d: "Ce mois-ci, la base n'est pas de " + fh(W.baseFull) + " : on retire les jours ouvrés " + prorataWhy(W.prorata) + ", soit " + W.prorata.days.length + " jour(s) × " + fh(W.C / 5) + " = " + fh(W.prorata.lostH) + ". Base attendue : <b>" + fh(W.baseM) + "</b> (méthode des heures réelles, la plus courante). Avec la méthode des jours ouvrés (" + W.prorata.worked + " jours travaillés sur " + W.prorata.all + "), on trouve " + fh(W.prorata.b2) + ". Les deux méthodes sont admises ; l'employeur doit appliquer la même à chaque fois. Jours fériés exclus." });
   if (W.prorata && v.heures != null) {
     const hsFiche = (v.hs25 || 0) + (v.hs50 || 0) + (v.hc10 || 0) + (v.hc25 || 0);
     const absF = (curDoc() && curDoc().f._absHours) || 0;
     const baseFiche = v.hBase != null ? r2(v.hBase - absF) : r2(v.heures - hsFiche);
-    if (baseFiche < W.prorata.min - 0.1) out.push({ s: "bad", t: "Base du mois d'embauche trop faible", d: "La fiche paie " + fh(baseFiche) + " de base, alors que la proratisation donne entre " + fh(W.prorata.min) + " et " + fh(W.prorata.max) + ". Il manque au moins " + fh(r2(W.prorata.min - baseFiche)) + "." });
+    if (baseFiche < W.prorata.min - 0.1) out.push({ s: "bad", t: "Base du mois incomplet trop faible", d: "La fiche paie " + fh(baseFiche) + " de base, alors que la proratisation donne entre " + fh(W.prorata.min) + " et " + fh(W.prorata.max) + ". Il manque au moins " + fh(r2(W.prorata.min - baseFiche)) + "." });
     else if (baseFiche > W.prorata.max + 0.1) out.push({ s: "warn", t: "Total d'heures de la fiche incohérent : " + fh(r2(baseFiche - W.prorata.b1)) + " inexpliquées", d: "Base proratisée attendue " + fh(W.prorata.b1) + " + " + fh(hsFiche) + " d'heures majorées = " + fh(r2(W.prorata.b1 + hsFiche)) + ", mais la fiche écrit " + fh(v.heures) + " au total. Soit la fiche compte " + fh(r2(baseFiche - W.prorata.b1)) + " de plus quelque part sans le dire, soit le total est faux. Sans le détail des lignes, impossible de savoir lequel : demande le détail du calcul." });
-    else out.push({ s: "ok", t: "Base du mois d'embauche correcte", d: "La fiche paie " + fh(baseFiche) + " de base (" + fh(v.heures) + " au total − " + fh(hsFiche) + " d'heures majorées) : ça correspond à la proratisation (" + fh(W.prorata.b1) + (Math.abs(W.prorata.b1 - W.prorata.b2) > 0.02 ? " à " + fh(W.prorata.b2) : "") + ")." });
+    else out.push({ s: "ok", t: "Base du mois incomplet correcte", d: "La fiche paie " + fh(baseFiche) + " de base (" + fh(v.heures) + " au total − " + fh(hsFiche) + " d'heures majorées) : ça correspond à la proratisation (" + fh(W.prorata.b1) + (Math.abs(W.prorata.b1 - W.prorata.b2) > 0.02 ? " à " + fh(W.prorata.b2) : "") + ")." });
   }
   const calW = weekCalendar(d);
   if (calW) {
@@ -1796,7 +2013,8 @@ function checkWeeks(d, v) {
       const lbl = "Semaine du " + dm(k.mon) + " au " + dm(k.sun);
       if (k.byEntry) out.push({ s: "info", t: lbl + " : semaine d'embauche", d: "Tu as commencé le " + dm(k.inFrom) + ". Seules tes heures à partir de ce jour comptent ; les heures sup se calculent au-delà de " + fh(W.C) + " sur cette semaine." });
       else if (k.cutStart) out.push({ s: "info", t: lbl + " : commencée le mois d'avant", d: "Les heures sup se calculent sur la semaine entière (lundi → dimanche). Note ici seulement les heures faites à partir du " + dm(k.inFrom) + " ; s'il y a des heures sup sur cette semaine, elles sont en général payées sur cette fiche-ci (le mois où la semaine se termine)." });
-      if (k.cutEnd) out.push({ s: "info", t: lbl + " : se termine le mois suivant", d: "Ta paie s'arrête au " + dm(k.inTo) + ". Note ici seulement les heures faites jusqu'au " + dm(k.inTo) + ". L'appli compte les heures sup déjà faites à cette date (au-delà de " + fh(W.C) + " depuis le lundi " + dm(k.mon) + "). Certains employeurs paient les heures sup de cette semaine sur la fiche du mois suivant : dans ce cas, l'écart doit se retrouver sur la fiche d'après. Si tu as aussi travaillé le " + dm(new Date(k.inTo.getFullYear(), k.inTo.getMonth(), k.inTo.getDate() + 1)) + " ou après, ces heures-là comptent pour le mois suivant." });
+      if (k.byExit) out.push({ s: "info", t: lbl + " : fin de contrat le " + dm(k.inTo), d: "Note seulement tes heures jusqu'au " + dm(k.inTo) + ". Les heures sup se calculent au-delà de " + fh(W.C) + " sur les jours faits cette semaine." });
+      else if (k.cutEnd) out.push({ s: "info", t: lbl + " : se termine le mois suivant", d: "Ta paie s'arrête au " + dm(k.inTo) + ". Note ici seulement les heures faites jusqu'au " + dm(k.inTo) + ". L'appli compte les heures sup déjà faites à cette date (au-delà de " + fh(W.C) + " depuis le lundi " + dm(k.mon) + "). Certains employeurs paient les heures sup de cette semaine sur la fiche du mois suivant : dans ce cas, l'écart doit se retrouver sur la fiche d'après. Si tu as aussi travaillé le " + dm(new Date(k.inTo.getFullYear(), k.inTo.getMonth(), k.inTo.getDate() + 1)) + " ou après, ces heures-là comptent pour le mois suivant." });
     });
   }
   if (!calW) {
@@ -1805,7 +2023,7 @@ function checkWeeks(d, v) {
     if (edge.length) out.push({ s: "info", t: "Semaine coupée par le changement de mois : " + edge.join(", "), d: "Une semaine va du lundi au dimanche. Si elle est à cheval sur deux mois, ses heures sup sont en général calculées et payées avec le mois où elle se termine. Ici, ses heures comptent dans la base, et ses heures sup éventuelles apparaîtront sur l'autre fiche. Note la semaine complète dans le mois où elle se termine si c'est ainsi que ton employeur fait." });
   }
   if (calW) W.low = W.low.filter((n) => { const k = calW.weeks[n - 1]; return k && !k.cutStart && !k.cutEnd; });
-  if (W.low.length) out.push({ s: "info", t: "Semaine(s) sous " + fh(W.C) + " : " + W.low.map((i) => calW && calW.weeks[i - 1] ? "du " + dm(calW.weeks[i - 1].mon) : "S" + i).join(", "), d: "Avec la mensualisation, une semaine plus courte ne baisse pas ton salaire, sauf absence (congé, maladie, absence non payée), qui doit alors apparaître sur la fiche. En décompte à la semaine, elle ne compense pas les heures sup des autres semaines." });
+  if (W.low.length) out.push({ s: "info", t: "Semaine(s) sous " + fh(W.C) + " : " + W.low.map((i) => calW && calW.weeks[i - 1] ? "du " + dm(calW.weeks[i - 1].mon) : "S" + i).join(", "), d: W.mens ? "Avec la mensualisation, une semaine plus courte ne baisse pas ton salaire, sauf absence (congé, maladie, absence non payée), qui doit alors apparaître sur la fiche. En décompte à la semaine, elle ne compense pas les heures sup des autres semaines." : "Payé à l'heure : une semaine plus courte est simplement moins payée. Elle ne compense pas les heures sup des autres semaines." });
   out.push({ s: "info", t: "Mode de calcul utilisé", d: (STATE.weekMode === "two" ? "Sur 2 semaines : heures sup au-delà de 70 h par période de 2 semaines (16 premières à 25 %). Ce mode n'est valable que si un accord collectif le prévoit." : "Règle générale du Code du travail : heures sup au-delà de 35 h par semaine (lundi-dimanche), les 8 premières à +25 %, ensuite +50 %.") + " Certains métiers ont un régime particulier (temps de travail calculé sur l'amplitude avec un coefficient, heures d'équivalence, décompte sur un cycle) : entre alors tes heures telles qu'elles doivent être comptées, et vérifie ce que prévoit ta convention collective." });
   return out;
 }
@@ -1821,7 +2039,7 @@ function cpAcquiredEstimate(d) {
   let refStart = new Date(end.getFullYear(), 5, 1);
   if (end < refStart) refStart = new Date(end.getFullYear() - 1, 5, 1);
   let from = refStart;
-  if (STATE.entree) { const e = new Date(STATE.entree); if (!isNaN(e) && e > from) from = e; }
+  { const e = entryDate(d); if (e && e > from) from = e; }
   const months = Math.max(0, (end.getFullYear() - from.getFullYear()) * 12 + end.getMonth() - from.getMonth() + (from.getDate() <= 1 ? 1 : 0));
   return { months, days: Math.min(30, months * 2.5), refStart, from };
 }
@@ -1836,9 +2054,11 @@ function checkCP(d, v) {
     else out.push({ s: hasIndem ? "ok" : "warn", t: "Congés du mois sur la fiche", d: hasIndem ? "Des lignes de congés apparaissent. Vérifie les dates et le montant. L'indemnité doit être au moins égale au salaire que tu aurais touché en travaillant (ou au 1/10e de ta rémunération de l'année, si c'est plus avantageux)." : "Des congés sont mentionnés, mais sans indemnité chiffrée : les dates et le montant doivent figurer." });
   }
   if (lines.length) out.push({ s: "info", t: "Lignes de congés lues", d: lines.map((l) => "<code class=\"src\">" + esc(l) + "</code>").join(" ") });
-  if (!hasCounters) {
+  const tCP = contractOf(d).type;
+  if (!hasCounters && (tCP === "interim" || tCP === "vacation")) out.push({ s: "info", t: "Pas de compteur de congés : normal " + (tCP === "interim" ? "en intérim" : "à la vacation"), d: tCP === "interim" ? "En intérim, tes congés sont payés à la fin de chaque mission par une indemnité compensatrice d'au moins 10 % (indemnité de fin de mission comprise). Vérifie-la dans « Ton contrat »." : "À la vacation, les congés sont souvent payés par une indemnité de 10 % ajoutée au paiement, selon ton secteur. Demande comment ils sont payés." });
+  else if (!hasCounters) {
     const est = cpAcquiredEstimate(d);
-    out.push({ s: "warn", t: "Pas de compteur de congés (acquis N-1, N, pris, solde)", d: "La fiche n'indique pas combien de jours de congé tu as. La loi n'oblige pas à mettre ces compteurs sur la fiche, mais presque tous les logiciels de paie le font, et ton employeur doit pouvoir te dire tes droits. <b>Demande-lui ton solde par écrit.</b> Repère : tu gagnes 2,5 jours ouvrables par mois de travail (30 jours, soit 5 semaines par an), y compris pendant un arrêt maladie (2 jours par mois en maladie non professionnelle)." + (est ? " Estimation pour la période en cours (depuis le " + est.from.toLocaleDateString("fr-FR") + ") : environ <b>" + est.days.toLocaleString("fr-FR") + " jours acquis</b>" + (STATE.entree ? "" : " si tu étais déjà dans l'entreprise au 1er juin (indique ta date d'entrée pour affiner)") + ", plus ce qui restait de l'année précédente (N-1)." : "") });
+    out.push({ s: "warn", t: "Pas de compteur de congés (acquis N-1, N, pris, solde)", d: "La fiche n'indique pas combien de jours de congé tu as. La loi n'oblige pas à mettre ces compteurs sur la fiche, mais presque tous les logiciels de paie le font, et ton employeur doit pouvoir te dire tes droits. <b>Demande-lui ton solde par écrit.</b> Repère : tu gagnes 2,5 jours ouvrables par mois de travail (30 jours, soit 5 semaines par an), y compris pendant un arrêt maladie (2 jours par mois en maladie non professionnelle)." + (est ? " Estimation pour la période en cours (depuis le " + est.from.toLocaleDateString("fr-FR") + ") : environ <b>" + est.days.toLocaleString("fr-FR") + " jours acquis</b>" + (entryDate(d) ? "" : " si tu étais déjà dans l'entreprise au 1er juin (indique ta date d'entrée pour affiner)") + ", plus ce qui restait de l'année précédente (N-1)." : "") });
   } else out.push({ s: "ok", t: "Compteur de congés présent", d: "Compare-le avec tes propres comptes : 2,5 jours ouvrables par mois travaillé." });
   return out;
 }
@@ -1980,7 +2200,7 @@ function checkCCN(d, v) {
   }
   if (R.r1 !== 25 || R.r2 !== 50 || R.band !== 8) out.push({ s: "info", t: "Majorations de ta convention appliquées", d: "Heures sup : " + R.r1 + " % pour les " + R.band + " premières heures de la semaine, puis " + R.r2 + " %. Utilisé dans le calcul semaine par semaine et la vérification des lignes d'heures sup." });
   if (R.anc && R.ancAns != null) {
-    const e = entryDate(), P = parsePeriod(d);
+    const e = entryDate(d), P = parsePeriod(d);
     if (e && P) {
       const years = (P.to - e) / (365.25 * 86400000);
       const has = /anciennete/.test(norm(d.text));
@@ -1999,13 +2219,15 @@ function checkCCN(d, v) {
 /* du travail, mutuelle, prévoyance, versement mobilité) ne sont pas   */
 /* devinés : ils viennent des règles saisies, sinon « variable ».      */
 /* ------------------------------------------------------------------ */
-const isRC = (n) => /(complementaire|agirc|arrco)/.test(n) && !/sante|mutuelle/.test(n);
+const isRC = (n) => /(complementaire|agirc|arrco)/.test(n) && !/sante|mutuelle|ircantec/.test(n);
 const isT2 = (n) => /tranche 2|tranche b|\bt2\b|\btr ?2\b/.test(n);
 const isT1 = (n) => /tranche 1|tranche a|\bt1\b|\btr ?1\b/.test(n);
 function rateRef(R, v) {
   const eff = R.effectif;
   const atTxt = R.at != null ? pct(R.at) : null;
   return [
+    { k: "ircantec_b", label: "IRCANTEC tranche B (secteur public)", test: (n) => /ircantec/.test(n) && /tranche b|tranche 2|\btb\b|\bt2\b/.test(n), sal: [6.95], pat: [12.55], note: "Retraite complémentaire des contractuels du public, au-delà du plafond Sécu." },
+    { k: "ircantec_a", label: "IRCANTEC tranche A (secteur public)", test: (n) => /ircantec/.test(n), sal: [2.80], pat: [4.20], note: "Retraite complémentaire des contractuels du public, jusqu'au plafond Sécu." },
     { k: "mutuelle", label: "Mutuelle (complémentaire santé)", test: (n) => /mutuelle|complementaire sante|frais de sante|soins? sante/.test(n), variable: "Montant fixé par le contrat de ton entreprise. L'employeur doit payer au moins la moitié." },
     { k: "prevoyance", label: "Prévoyance", test: (n) => /prevoyance|incapacite/.test(n), variable: "Taux fixé par le contrat de prévoyance de ton entreprise ou de ta convention." },
     { k: "totalite", label: "Sécurité sociale sur la totalité du salaire (regroupée)", test: (n) => /totalite du salaire|sur la totalite/.test(n), sal: [0.40],
@@ -2069,7 +2291,7 @@ function renderRateTable() {
   const refs = rateRef(R, v);
   const lines = d.lines || [];
   const found = {};
-  for (const l of lines) { const ns = numbersIn(l); const ar = lineArithmetic(ns); if (!ar || !ar.pairs.length) continue; const ref = refs.find((e) => e.test(norm(l))); if (ref && !found[ref.k]) found[ref.k] = checkLineRates(ref, ar.pairs, (GLOSSARY.find(([re]) => re.test(norm(l))) || [])[3]); }
+  for (const l of lines) { const ns = numbersIn(l); const ar = lineArithmetic(ns); if (!ar || !ar.pairs.length) continue; const ref = refs.find((e) => e.test(norm(l))); if (ref && !found[ref.k]) { let r = checkLineRates(ref, ar.pairs, (GLOSSARY.find(([re]) => re.test(norm(l))) || [])[3]); if (r && (r.s === "bad" || r.s === "warn") && specialRates(d)) r = { s: "var", txt: r.txt }; found[ref.k] = r; } }
   const st = { ok: "✓ conforme sur ta fiche", warn: "≈ répartition différente", bad: "✗ différent sur ta fiche", var: "propre à l'entreprise" };
   const isVar = (e) => e.variable && !(e.pat || e.sal);
   const ordered = refs.filter((e) => found[e.k]).concat(refs.filter((e) => !found[e.k] && !isVar(e)), refs.filter((e) => !found[e.k] && isVar(e)));
@@ -2168,6 +2390,16 @@ function recompute() {
   const sem = d ? checkWeeks(d, v) : [];
   const cp = d ? checkCP(d, v) : [];
   const ccnChecks = d ? checkCCN(d, v) : [];
+  const ctChecks = d ? checkContract(d, v) : [];
+  if (d && specialRates(d)) {
+    // Apprenti ou secteur public : cotisations et imposition spécifiques, écarts donnés à titre indicatif
+    const soft = (c) => { if (c.s === "bad" || c.s === "warn") { c.s = "info"; c.d = "<i>Indicatif (" + (contractOf(d).type === "apprenti" ? "apprenti" : "secteur public") + ").</i> " + c.d; } };
+    cotis.forEach(soft);
+    calc.filter((c) => /^Part des cotisations|^Net imposable|^Heures sup : réduction/.test(c.t)).forEach(soft);
+    // Secteur public : le modèle de bulletin du privé (convention collective, URSSAF…) ne s'applique pas tel quel
+    if (contractOf(d).pub) ment.forEach((c) => { if (c.s === "bad") { c.s = "info"; c.d = "<i>Secteur public : modèle de bulletin différent, à titre indicatif.</i> " + c.d; } });
+  }
+  renderChecks("checks-contract", "count-contract", ctChecks);
   renderChecks("checks-ccn", "count-ccn", ccnChecks);
   renderChecks("checks-cp", "count-cp", cp);
   renderChecks("checks-sem", "count-sem", sem);
@@ -2176,7 +2408,7 @@ function recompute() {
   renderChecks("checks-mentions", "count-mentions", ment);
   renderChecks("checks-indem", "count-indem", indem);
   renderMulti(P);
-  STATE.results = { calc, cotis, ment, indem, sem, cp, ccn: ccnChecks, v };
+  STATE.results = { calc, cotis, ment, indem, sem, cp, ccn: ccnChecks, ct: ctChecks, v };
   renderLines(STATE.lines);
   renderRateTable();
   renderVerdict();
@@ -2217,9 +2449,10 @@ function reportText() {
   const multi = STATE.docs.filter((d) => !d.example).length > 1 ? bad(Array.from(document.querySelectorAll("#checks-multi li:not(.more)")).map((li) => ({ s: li.className, t: li.querySelector(".title").textContent, d: li.querySelector(".detail").innerHTML }))) : "";
   return [
     "Analyse de ma fiche de paie" + ($("periode-lue").textContent ? " (" + $("periode-lue").textContent + ")" : ""),
+    "Type de contrat : " + CONTRACTS[contractOf(curDoc()).type].long,
     "",
     "Points à vérifier :",
-    bad(R.calc.concat(R.ccn || [], R.sem || [], R.cp || [], R.cotis, R.indem)) || "- aucun",
+    bad(R.calc.concat(R.ct || [], R.ccn || [], R.sem || [], R.cp || [], R.cotis, R.indem)) || "- aucun",
     multi ? "\nSur plusieurs mois :\n" + multi : "",
     "",
     "Mentions obligatoires (art. R3243-1 du Code du travail) que je ne trouve pas :",
@@ -2254,8 +2487,9 @@ $("btn-analyse-paste").addEventListener("click", () => { const t = $("paste-area
 $("btn-example").addEventListener("click", () => { STATE.docs = []; analyse(EXAMPLE, "Exemple fictif chargé : ce ne sont pas tes chiffres. Dépose tes propres fiches pour les analyser.", "example", "Exemple"); });
 $("btn-clear").addEventListener("click", () => {
   STATE.docs = [];
-  $("paste-area").value = ""; $("report-fallback").value = ""; $("report-fallback").hidden = true;
-  STATE.units = {}; store.set("units", {}); STATE.weekMode = "week"; store.set("weekMode", "week"); STATE.contrat = 35; store.set("contrat", 35); STATE.entree = ""; store.set("entree", ""); STATE.ccnRules = {}; store.set("ccnRules", {});
+  $("paste-area").value = "";
+  ["ct-entree", "ct-sortie", "week-entree", "cp-entree"].forEach((id) => { $(id).value = ""; }); $("report-fallback").value = ""; $("report-fallback").hidden = true;
+  STATE.units = {}; store.set("units", {}); STATE.apprenti = {}; store.set("apprenti", {}); STATE.weekMode = "week"; store.set("weekMode", "week"); STATE.contrat = 35; store.set("contrat", 35); STATE.entree = ""; store.set("entree", ""); STATE.ccnRules = {}; store.set("ccnRules", {});
   analyse(EXAMPLE, "Tout est effacé de cette page (fiches, chiffres, analyses, montants des paniers). L'exemple fictif est affiché.", "example", "Exemple");
 });
 $("btn-copy").addEventListener("click", () => {
@@ -2264,8 +2498,16 @@ $("btn-copy").addEventListener("click", () => {
   try { navigator.clipboard.writeText(t).then(() => { $("copied").textContent = "Rapport copié."; }, fallback); } catch (e) { fallback(); }
 });
 $("cp-pris").addEventListener("input", (e) => { const v = toNum(e.target.value || ""); curDoc().cpPris = isNaN(v) ? null : v; recompute(); });
-const setEntree = (v) => { STATE.entree = v; store.set("entree", v); $("cp-entree").value = v; $("week-entree").value = v; renderWeeksForm(); recompute(); };
+const setEntree = (v) => { STATE.entree = v; store.set("entree", v); $("cp-entree").value = v; $("week-entree").value = v; $("ct-entree").value = v; renderContract(); renderWeeksForm(); recompute(); };
+$("ct-select").addEventListener("change", (e) => {
+  const d = curDoc(); d.contractChoice = e.target.value;
+  if (d._contract && d.contractChoice === d._contract.type) delete d.contractChoice;
+  renderContract(); renderWeeksForm(); recompute();
+});
+const setSortie = (v) => { const d = curDoc(); if ((d.exitDate || "") === v) return; d.exitDate = v; renderContract(); renderWeeksForm(); recompute(); };
 ["input", "change", "blur"].forEach((ev) => {
+  $("ct-entree").addEventListener(ev, (e) => { if (e.target.value !== STATE.entree && !(e.target.value === "" && !STATE.entree)) setEntree(e.target.value); });
+  $("ct-sortie").addEventListener(ev, (e) => setSortie(e.target.value));
   $("cp-entree").addEventListener(ev, (e) => { if (e.target.value !== STATE.entree) setEntree(e.target.value); });
   $("week-entree").addEventListener(ev, (e) => { if (e.target.value !== STATE.entree) setEntree(e.target.value); });
 });
@@ -2284,6 +2526,6 @@ $("week-mode").addEventListener("change", (e) => { STATE.weekMode = e.target.val
 analyse(EXAMPLE, "Exemple fictif chargé : ce ne sont pas tes chiffres. Dépose tes propres fiches pour les analyser.", "example", "Exemple");
 </script>
 
-<script>window.APP_BUILD = "13/11/2026 10:44"; var vb = document.getElementById("app-build"); if (vb) vb.textContent = "Version du " + window.APP_BUILD;</script>
+<script>window.APP_BUILD = "13/11/2026 10:59"; var vb = document.getElementById("app-build"); if (vb) vb.textContent = "Version du " + window.APP_BUILD;</script>
 </body>
 </html>
