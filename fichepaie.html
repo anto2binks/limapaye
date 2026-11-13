@@ -834,6 +834,20 @@ function extract(text) {
 /* ------------------------------------------------------------------ */
 const SAL = "Toi", PAT = "Employeur", BOTH = "Toi + employeur", NONE = "—";
 const GLOSSARY = [
+  [/precarite|indemnite de fin de contrat|fin de (contrat|cdd)/, "Indemnité de fin de contrat (prime de précarité)", "Versée à la fin d'un CDD : 10 % de tout le brut gagné pendant le contrat (sauf exceptions : CDD saisonnier, étudiant en vacances, embauche en CDI à la suite…). C'est de l'argent pour toi.", NONE],
+  [/indemnite compensatrice de conges|\biccp\b|compensatrice de cp/, "Indemnité compensatrice de congés payés", "Paie les congés que tu n'as pas pu prendre, à la fin du contrat : au moins 10 % du brut gagné pendant le contrat. C'est de l'argent pour toi.", NONE],
+  [/cpf.?cdd|contribution cpf/, "Contribution CPF-CDD", "Contribution de 1 % du brut, payée par l'employeur pour chaque salarié en CDD (sauf exceptions : contrats aidés, apprentissage, CDD transformé en CDI…). Elle finance le compte personnel de formation. Rien n'est retiré de ton salaire.", PAT],
+  [/fnal|aide au logement/, "FNAL (aide au logement)", "Finance les aides au logement (APL). 0,10 % du salaire (jusqu'au plafond Sécu) sous 50 salariés, 0,50 % à partir de 50. Payé uniquement par l'employeur.", PAT],
+  [/\bcsa\b|solidarite autonomie/, "Contribution solidarité autonomie (CSA)", "Finance l'aide aux personnes âgées et handicapées. 0,30 % du salaire, payé par l'employeur.", PAT],
+  [/formation professionnelle|cufpa|contribution unique/, "Formation professionnelle", "Finance la formation des salariés (dont ton CPF). 0,55 % du brut sous 11 salariés, 1 % à partir de 11. Payée par l'employeur.", PAT],
+  [/apprentissage/, "Taxe d'apprentissage", "Finance l'apprentissage et les formations professionnelles initiales. Part principale 0,59 % du brut (+ 0,09 % de solde dans certaines entreprises). Payée par l'employeur.", PAT],
+  [/dialogue social/, "Contribution au dialogue social", "Finance les organisations syndicales et patronales. 0,016 % du brut, payé par l'employeur.", PAT],
+  [/mobilite|versement transport/, "Versement mobilité", "Finance les transports en commun de la commune. Taux fixé localement, seulement dans les entreprises de 11 salariés et plus. Payé par l'employeur.", PAT],
+  [/forfait social/, "Forfait social", "Taxe payée par l'employeur sur certaines sommes (intéressement, participation, prévoyance dans les entreprises de 11 salariés et plus).", PAT],
+  [/effort de construction|\bpeec\b|1 ?% logement/, "Participation à l'effort de construction", "Finance le logement des salariés (Action Logement). 0,45 % du brut, entreprises de 50 salariés et plus. Payée par l'employeur.", PAT],
+  [/heures? de nuit|majoration (de )?nuit|travail de nuit/, "Heures de nuit", "Majoration pour les heures travaillées la nuit. Le taux dépend de ta convention collective.", NONE],
+  [/dimanche/, "Travail du dimanche", "Majoration pour les heures travaillées le dimanche. Le taux dépend de ta convention collective ou d'un accord.", NONE],
+  [/jour ferie|jours feries|\bferie\b/, "Jour férié", "Paiement ou majoration d'un jour férié (chômé ou travaillé), selon ta convention collective.", NONE],
   [/evolution de la remuneration|suppression des cotisations/, "Gain lié aux réformes", "Information seulement : ce que tu as gagné grâce à la suppression des cotisations chômage et maladie salariées en 2018.", NONE],
   [/salaire de base|salaire mensuel|appointements|salaire forfaitaire/, "Salaire de base", "Ton salaire prévu au contrat : heures × taux horaire. C'est le point de départ.", NONE],
   [/heures? sup|heures? compl|majoration|\bhs\b/, "Heures supplémentaires", "Heures au-delà de 35 h/semaine. Majorées d'au moins 25 % (les 8 premières), puis 50 %. Elles sont en partie exonérées d'impôt et de cotisations.", NONE],
@@ -1968,9 +1982,10 @@ function rateRef(R, v) {
     { k: "famille", label: "Allocations familiales", test: (n) => /famille|allocations familiales/.test(n), sal: [], pat: [3.45, 5.25], note: "3,45 % ; 5,25 % au-delà d'environ 3,3 SMIC." },
     { k: "csa", label: "Contribution solidarité autonomie (CSA)", test: (n) => /\bcsa\b|solidarite autonomie/.test(n), sal: [], pat: [0.30] },
     { k: "fnal", label: "FNAL (aide au logement)", test: (n) => /fnal/.test(n), sal: [], pat: eff == null ? [0.10, 0.50] : eff < 50 ? [0.10] : [0.50], note: "0,10 % (plafonné) sous 50 salariés, 0,50 % à partir de 50." },
-    { k: "formation", label: "Formation professionnelle", test: (n) => /formation professionnelle/.test(n), sal: [], pat: eff == null ? [0.55, 1.00] : eff < 11 ? [0.55] : [1.00], note: "0,55 % sous 11 salariés, 1 % à partir de 11." },
+    { k: "formation", label: "Formation professionnelle", test: (n) => /formation professionnelle/.test(n) && !/cpf/.test(n), sal: [], pat: eff == null ? [0.55, 1.00] : eff < 11 ? [0.55] : [1.00], note: "0,55 % sous 11 salariés, 1 % à partir de 11." },
     { k: "apprentissage_solde", label: "Taxe d'apprentissage – solde", test: (n) => /apprentissage/.test(n) && /solde/.test(n), sal: [], pat: [0.09] },
     { k: "apprentissage", label: "Taxe d'apprentissage – part principale", test: (n) => /apprentissage/.test(n), sal: [], pat: [0.59] },
+    { k: "cpf_cdd", label: "Contribution CPF-CDD (salariés en CDD)", test: (n) => /cpf.?cdd|contribution cpf/.test(n), sal: [], pat: [1.00], note: "1 % du brut, payé par l'employeur pour les salariés en CDD (sauf exceptions)." },
     { k: "dialogue", label: "Contribution au dialogue social", test: (n) => /dialogue social/.test(n), sal: [], pat: [0.016] },
     { k: "mobilite", label: "Versement mobilité", test: (n) => /mobilite|versement transport/.test(n), variable: "Taux fixé par la commune ou l'agglomération (entreprises de 11 salariés et plus)." },
   ];
